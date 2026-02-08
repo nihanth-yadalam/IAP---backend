@@ -21,12 +21,16 @@ async def login_access_token(
     OAuth2 compatible token login, get an access token for future requests
     """
     # Authenticate user
-    # Find user by username (which is email in form_data usually, or username)
-    # The spec says 'username' and 'email' in User model. 
-    # OAuth2PasswordRequestForm has 'username' and 'password' fields.
-    # We'll allow logging in with email.
-    
-    result = await db.execute(select(User).where(User.email == form_data.username))
+    # Try to find by email first, then username
+    from sqlalchemy import or_
+    result = await db.execute(
+        select(User).where(
+            or_(
+                User.email == form_data.username,
+                User.username == form_data.username
+            )
+        )
+    )
     user = result.scalars().first()
     
     if not user or not security.verify_password(form_data.password, user.password_hash):
