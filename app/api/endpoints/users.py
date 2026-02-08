@@ -9,7 +9,7 @@ from app.models.user import User, UserProfile
 from app.schemas.user import UserCreate, UserResponse, UserProfileBase, UserLogin
 
 router = APIRouter()
-
+# email is being considered as username. needs a fix.
 @router.post("/", response_model=UserResponse)
 async def create_user(
     *,
