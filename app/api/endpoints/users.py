@@ -6,7 +6,7 @@ from sqlalchemy import select
 from app.api import deps
 from app.core import security
 from app.models.user import User, UserProfile
-from app.schemas.user import UserCreate, UserResponse, UserProfileBase, UserLogin
+from app.schemas.user import UserCreate, UserResponse, UserProfileBase, UserLogin, UserUpdatePassword
 
 router = APIRouter()
 # email is being considered as username. needs a fix.
@@ -114,3 +114,26 @@ async def update_user_profile(
     # We need to refresh the user's profile relationship?
     # Or just return the user object which usually works if session is alive.
     return current_user
+
+@router.post("/me/password", response_model=Any)
+async def update_password(
+    *,
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+    password_in: UserUpdatePassword,
+    current_user: Annotated[User, Depends(deps.get_current_user)]
+) -> Any:
+    """
+    Update own password.
+    """
+    if not security.verify_password(password_in.current_password, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="Incorrect password")
+    
+    if password_in.current_password == password_in.new_password:
+         raise HTTPException(status_code=400, detail="New password cannot be the same as the current password")
+
+    hashed_password = security.get_password_hash(password_in.new_password)
+    current_user.password_hash = hashed_password
+    db.add(current_user)
+    await db.commit()
+    
+    return {"message": "Password updated successfully"}
