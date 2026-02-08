@@ -16,6 +16,11 @@ class UserUpdatePassword(BaseModel):
     current_password: str
     new_password: str
 
+class PasswordReset(BaseModel):
+    token: str
+    new_password: str
+    email: EmailStr
+
 class UserProfileBase(BaseModel):
     full_name: Optional[str] = None
     major: Optional[str] = None

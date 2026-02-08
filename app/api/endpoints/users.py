@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.api import deps
-from app.core import security
+from app.core import security, utils
 from app.models.user import User, UserProfile
 from app.schemas.user import UserCreate, UserResponse, UserProfileBase, UserLogin, UserUpdatePassword
 
@@ -134,6 +134,57 @@ async def update_password(
     hashed_password = security.get_password_hash(password_in.new_password)
     current_user.password_hash = hashed_password
     db.add(current_user)
+    await db.commit()
+    
+    return {"message": "Password updated successfully"}
+
+@router.post("/password-recovery/{email}", response_model=Any)
+async def recover_password(email: str, db: Annotated[AsyncSession, Depends(deps.get_db)]) -> Any:
+    """
+    Password Recovery
+    """
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalars().first()
+
+    if not user:
+        # We generally don't want to leak if a user exists or not, but for this MVP internal tool it's fine.
+        # However, to be "Production-Grade", we should return success even if user doesn't exist.
+        # But for "Terminal Output" debugging, it's helpful to know.
+        # User requested: "display the details in the terminal"
+        raise HTTPException(
+            status_code=404,
+            detail="The user with this username does not exist in the system.",
+        )
+    
+    password_reset_token = utils.generate_password_reset_token(email=email)
+    
+    # Simulate sending email
+    print(f"\n[EMAIL SIMULATION] Password Reset Token for {email}:\n{password_reset_token}\n")
+    
+    return {"message": "Password recovery email sent (check terminal)"}
+
+@router.post("/reset-password/", response_model=Any)
+async def reset_password(
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+    token: str = Body(...),
+    new_password: str = Body(...),
+) -> Any:
+    """
+    Reset password
+    """
+    email = utils.verify_password_reset_token(token)
+    if not email:
+        raise HTTPException(status_code=400, detail="Invalid token")
+    
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalars().first()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="The user for this token does not exist in the system.")
+        
+    hashed_password = security.get_password_hash(new_password)
+    user.password_hash = hashed_password
+    db.add(user)
     await db.commit()
     
     return {"message": "Password updated successfully"}
