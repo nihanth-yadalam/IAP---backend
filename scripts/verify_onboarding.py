@@ -90,8 +90,42 @@ async def run_verification():
              print(f"Request Error: {repr(e)}")
              return
 
-        # 5. Check Output Status
-        print("\n[5] Checking Status After Submission...")
+        # 5. Check Output Status (Intermediate)
+        print("\n[5] Checking Status After Questionnaire (Should be 'schedule')...")
+        try:
+            resp = await client.get(f"{BASE_URL}/onboarding/status", headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                print(f"Status: {data}")
+                if data["is_complete"] == False and data["step"] == "schedule":
+                     print("SUCCESS: Correct intermediate status.")
+                else:
+                     print("FAIL: Incorrect intermediate status.")
+            else:
+                print(f"FAIL: Status check failed: {resp.status_code} - {resp.text}")
+        except Exception as e:
+             print(f"Request Error: {repr(e)}")
+
+        # 6. Add Fixed Slot to complete flow
+        print("\n[6] Adding Fixed Slot to complete onboarding...")
+        try:
+            resp = await client.post(f"{BASE_URL}/schedule/fixed", headers=headers, json=[
+                {
+                    "day_of_week": "Monday", 
+                    "start_time": "09:00:00", 
+                    "end_time": "10:00:00", 
+                    "label": "Test"
+                }
+            ])
+            if resp.status_code == 200:
+                 print("SUCCESS: Slot added.")
+            else:
+                 print(f"FAIL: Add slot failed: {resp.status_code} - {resp.text}")
+        except Exception as e:
+             print(f"Request Error: {repr(e)}")
+
+        # 7. Check Final Status
+        print("\n[7] Checking Final Status (Should be 'done')...")
         try:
             resp = await client.get(f"{BASE_URL}/onboarding/status", headers=headers)
             if resp.status_code == 200:
