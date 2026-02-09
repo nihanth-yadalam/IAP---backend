@@ -12,6 +12,7 @@ from app.db.base import Base
 # Import all models so Base has them registered
 from app.models.user import User, UserProfile # noqa
 from app.models.schedule import FixedSlot # noqa
+from app.models.task import Course, Task # noqa
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
