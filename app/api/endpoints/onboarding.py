@@ -12,35 +12,32 @@ router = APIRouter()
 
 @router.get("/status", response_model=Any)
 async def get_onboarding_status(
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
     current_user: Annotated[User, Depends(deps.get_current_user)],
 ) -> Any:
     """
     Check Onboarding Status
-    Story 2.1: Return {"is_complete": bool, "step": ...}
+    Story 2.1: Return {"is_complete": bool, "step": "questionnaire" | "schedule" | "done"}
     """
-    # Use current_user.profile which is eager loaded
     profile = current_user.profile
     if not profile:
-        # Should not happen if registration works correctly
         raise HTTPException(status_code=404, detail="Profile not found")
 
-    onboarding_data = profile.onboarding_data
-    is_complete = bool(onboarding_data)
+    # Step 1: Questionnaire
+    if not profile.onboarding_data:
+        return {"is_complete": False, "step": "questionnaire"}
     
-    step = "done" if is_complete else "questionnaire"
-    # Logic could be more complex if we had more steps, but for now:
-    # If empty -> questionnaire
-    # If filled -> done (since schedule is "Fixed Weekly Schedule" separate story, check reqs)
-    # Story 2.1: "step": "questionnaire" | "schedule" | "done"
-    # Let's assume after questionnaire comes schedule.
+    # Step 2: Schedule
+    # Check if user has any fixed slots
+    from app.models.schedule import FixedSlot
+    result = await db.execute(select(FixedSlot).where(FixedSlot.user_id == current_user.id))
+    slots = result.scalars().first()
     
-    # Requirement: Return {"is_complete": bool, "step": "questionnaire" | "schedule" | "done"}
-    # based on if onboarding_data is empty.
-    
-    return {
-        "is_complete": is_complete,
-        "step": step
-    }
+    if not slots:
+        return {"is_complete": False, "step": "schedule"}
+
+    # Step 3: Done
+    return {"is_complete": True, "step": "done"}
 
 @router.post("/questionnaire", response_model=Any)
 async def submit_questionnaire(
