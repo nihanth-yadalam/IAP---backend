@@ -5,13 +5,10 @@ __pycache__/
 
 # Environments
 .env
-.env.example
-.venv
+.venv/
 env/
 venv/
 ENV/
-env.bak/
-venv.bak/
 
 # IDEs
 .vscode/
@@ -22,5 +19,34 @@ dist/
 build/
 *.egg-info/
 
+# Database files
+*.db
 
-*.txt
+# OS
+.DS_Store
+Thumbs.db
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+.env
+.env.*
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Database (local dev only)
+*.sqlite
+*.db
+
+# ngrok
+.ngrok2/
