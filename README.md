@@ -1,1 +1,1 @@
-*follow dev1 branch.*
+*follow main branch.*
