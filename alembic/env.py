@@ -1,10 +1,45 @@
+<<<<<<< HEAD
+"""
+Alembic env.py — async migration support for the merged IAP backend.
+"""
+
 import asyncio
 from logging.config import fileConfig
 
+from alembic import context
+=======
+import asyncio
+from logging.config import fileConfig
+
+>>>>>>> main
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+<<<<<<< HEAD
+from app.core.config import settings
+from app.db.base import Base
+
+# Import all models so Alembic can detect them
+from app.models.user import User, UserProfile  # noqa
+from app.models.task import Course, Task  # noqa
+from app.models.schedule import FixedSlot  # noqa
+from app.models.sync import CalendarSyncState  # noqa
+
+config = context.config
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+# Override sqlalchemy.url from settings
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+
+target_metadata = Base.metadata
+
+
+def run_migrations_offline() -> None:
+    """Run migrations in 'offline' mode."""
+    url = config.get_main_option("sqlalchemy.url")
+=======
 from alembic import context
 
 from app.core.config import settings
@@ -40,6 +75,7 @@ def run_migrations_offline() -> None:
 
     """
     url = settings.DATABASE_URL
+>>>>>>> main
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -59,6 +95,11 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
+<<<<<<< HEAD
+    """Run migrations in 'online' mode (async engine)."""
+    connectable = async_engine_from_config(
+        config.get_section(config.config_ini_section, {}),
+=======
     """In this scenario we need to create an Engine
     and associate a connection with the context.
 
@@ -68,6 +109,7 @@ async def run_async_migrations() -> None:
     
     connectable = async_engine_from_config(
         configuration,
+>>>>>>> main
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
@@ -79,12 +121,15 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
+<<<<<<< HEAD
+=======
     """Run migrations in 'online' mode.
 
     In this scenario we need to create an Engine
     and associate a connection with the context.
 
     """
+>>>>>>> main
     asyncio.run(run_async_migrations())
 
 
