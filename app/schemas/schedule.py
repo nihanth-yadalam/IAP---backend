@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 """
 Merged Schedule / Slot schemas.
 
@@ -17,14 +16,6 @@ from app.models.schedule import DayOfWeek
 
 class RecurringSlotCreate(BaseModel):
     """Used by POST /schedule/slots (bulk array) for onboarding."""
-=======
-from datetime import time
-from typing import Optional, List
-from pydantic import BaseModel
-from app.models.schedule import DayOfWeek
-
-class FixedSlotBase(BaseModel):
->>>>>>> main
     day_of_week: DayOfWeek
     start_time: time
     end_time: time
@@ -32,7 +23,6 @@ class FixedSlotBase(BaseModel):
     is_google_event: bool = False
     google_event_id: Optional[str] = None
 
-<<<<<<< HEAD
 
 # ── System B — absolute datetime slots (Google-synced) ───────────────
 
@@ -71,14 +61,3 @@ class SlotResponse(BaseModel):
     is_deleted: bool = False
 
     model_config = ConfigDict(from_attributes=True)
-=======
-class FixedSlotCreate(FixedSlotBase):
-    pass
-
-class FixedSlotResponse(FixedSlotBase):
-    id: int
-    user_id: int
-
-    class Config:
-        from_attributes = True
->>>>>>> main
