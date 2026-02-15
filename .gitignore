@@ -5,22 +5,18 @@ __pycache__/
 
 # Environments
 .env
-.env.example
 .venv
 env/
 venv/
-ENV/
-env.bak/
-venv.bak/
 
 # IDEs
 .vscode/
 .idea/
 
-# Distribution / Packaging
+# Distribution
 dist/
 build/
 *.egg-info/
 
-
-*.txt
+# Database
+*.db
