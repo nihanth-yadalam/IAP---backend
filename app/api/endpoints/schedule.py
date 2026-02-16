@@ -7,11 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api import deps
 from app.models.user import User
 from app.models.schedule import FixedSlot
-from app.schemas.schedule import FixedSlotCreate, FixedSlotResponse
+from app.schemas.schedule import RecurringSlotCreate, SlotResponse
 
 router = APIRouter()
 
-@router.get("/fixed", response_model=List[FixedSlotResponse])
+@router.get("/fixed", response_model=List[SlotResponse])
 async def get_fixed_schedule(
     db: Annotated[AsyncSession, Depends(deps.get_db)],
     current_user: Annotated[User, Depends(deps.get_current_user)],
@@ -27,7 +27,7 @@ async def get_fixed_schedule(
 async def create_fixed_schedule(
     *,
     db: Annotated[AsyncSession, Depends(deps.get_db)],
-    slots_in: List[FixedSlotCreate],
+    slots_in: List[RecurringSlotCreate],
     current_user: Annotated[User, Depends(deps.get_current_user)],
 ) -> Any:
     """
@@ -49,6 +49,7 @@ async def create_fixed_schedule(
             start_time=slot_data.start_time,
             end_time=slot_data.end_time,
             label=slot_data.label,
+            title=slot_data.label,
             is_google_event=slot_data.is_google_event,
             google_event_id=slot_data.google_event_id
         )
