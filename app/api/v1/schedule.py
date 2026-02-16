@@ -57,7 +57,19 @@ async def create_fixed_schedule(
     slots_in: List[RecurringSlotCreate],
     current_user: Annotated[User, Depends(deps.get_current_user)],
 ) -> Any:
-    """Bulk insert recurring fixed slots (onboarding step)."""
+    """Bulk insert recurring fixed slots (onboarding / settings update).
+    Deletes existing recurring slots first so this is a full replace."""
+    # Delete existing recurring (non-Google) slots for this user
+    existing = await db.execute(
+        select(FixedSlot).where(
+            FixedSlot.user_id == current_user.id,
+            FixedSlot.is_google_event == False,
+            FixedSlot.is_deleted == False,
+        )
+    )
+    for old_slot in existing.scalars().all():
+        await db.delete(old_slot)
+
     new_slots = []
     for slot_data in slots_in:
         slot = FixedSlot(
@@ -73,7 +85,7 @@ async def create_fixed_schedule(
         new_slots.append(slot)
 
     await db.commit()
-    return {"message": f"Successfully added {len(new_slots)} fixed slots."}
+    return {"message": f"Successfully replaced with {len(new_slots)} fixed slots."}
 
 
 # ── M23 — Create a calendar slot + push to Google ────────────────────
