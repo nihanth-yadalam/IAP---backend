@@ -4,7 +4,9 @@ from typing import Optional
 
 class CourseBase(BaseModel):
     name: str
+    code: Optional[str] = None
     color_code: str
+    term: Optional[str] = None
     is_archived: bool = False
 
 
@@ -14,7 +16,9 @@ class CourseCreate(CourseBase):
 
 class CourseUpdate(BaseModel):
     name: Optional[str] = None
+    code: Optional[str] = None
     color_code: Optional[str] = None
+    term: Optional[str] = None
     is_archived: Optional[bool] = None
 
 

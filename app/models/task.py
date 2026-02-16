@@ -2,7 +2,7 @@
 Course + Task models — from System A (unchanged).
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import (
     Integer, String, Boolean, ForeignKey, DateTime, Text,
@@ -40,7 +40,9 @@ class Course(Base):
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(String, nullable=False)
+    code: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     color_code: Mapped[str] = mapped_column(String, nullable=False)
+    term: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
 
     user = relationship("User", back_populates="courses")
@@ -76,11 +78,11 @@ class Task(Base):
     )
 
     # Time columns
-    deadline: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    scheduled_start_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    scheduled_end_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    deadline: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    scheduled_start_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    scheduled_end_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     estimated_duration_mins: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Future: Intelligent Task Decomposition
     parent_task_id: Mapped[Optional[int]] = mapped_column(
