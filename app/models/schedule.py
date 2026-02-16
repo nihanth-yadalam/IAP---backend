@@ -10,7 +10,7 @@ Merged: keeps BOTH representations. Recurring fields are used for onboarding/col
 from datetime import datetime
 from typing import Optional
 from sqlalchemy import (
-    Integer, String, Boolean, ForeignKey, DateTime, Time, CheckConstraint,
+    Column, Integer, String, Boolean, ForeignKey, DateTime, Time, CheckConstraint, Enum,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
@@ -54,10 +54,10 @@ class FixedSlot(Base):
 
     # Google sync metadata (System B)
     is_google_event: Mapped[bool] = mapped_column(Boolean, default=False)
-    google_event_id: Mapped[Optional[str]] = mapped_column(String, unique=True, nullable=True)
-    last_updated_source: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
-    last_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
+    google_event_id: Mapped[str | None] = mapped_column(String, nullable=True) # CRITICAL for Epic 2 compatibility
+    last_updated_source: Mapped[str | None] = mapped_column(String(10), default="APP") # Modified from original
+    last_updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow) # Modified from original
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False) # Modified from original
 
     # Relationships
     user = relationship("User", back_populates="fixed_slots")
