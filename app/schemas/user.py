@@ -31,6 +31,7 @@ class UserProfileBase(BaseModel):
     full_name: Optional[str] = None
     major: Optional[str] = None
     university: Optional[str] = None
+    timezone: Optional[str] = "UTC"
     current_archetype: Optional[str] = "Unclassified"
     onboarding_data: Optional[dict[str, Any]] = {}
 

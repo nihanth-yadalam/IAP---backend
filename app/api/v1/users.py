@@ -99,6 +99,26 @@ async def update_user_profile(
     return current_user
 
 
+# ── Set timezone (lightweight, called silently from frontend) ────────
+
+@router.put("/me/timezone")
+async def set_timezone(
+    *,
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+    tz: str = Body(..., embed=True),
+) -> Any:
+    """Set the user's timezone (e.g. 'Asia/Kolkata')."""
+    result = await db.execute(select(UserProfile).where(UserProfile.user_id == current_user.id))
+    profile = result.scalars().first()
+    if not profile:
+        profile = UserProfile(user_id=current_user.id)
+        db.add(profile)
+    profile.timezone = tz
+    await db.commit()
+    return {"timezone": tz}
+
+
 # ── M7 — Change password ─────────────────────────────────────────────
 
 @router.post("/me/password")

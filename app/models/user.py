@@ -51,6 +51,7 @@ class UserProfile(Base):
     full_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     major: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     university: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    timezone: Mapped[Optional[str]] = mapped_column(String, nullable=True, default="UTC")
     current_archetype: Mapped[str] = mapped_column(String, default="Unclassified")
     onboarding_data: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 

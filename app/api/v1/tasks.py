@@ -21,6 +21,7 @@ from app.models.schedule import FixedSlot
 from app.schemas.tasks import TaskCreate, TaskUpdate, TaskResponse
 from app.services.google_oauth import GoogleOAuthService
 from app.services.calendar_service import CalendarService
+from app.services.sync_engine import SyncEngine
 
 router = APIRouter()
 
@@ -29,6 +30,12 @@ router = APIRouter()
 
 def _calendar_service() -> CalendarService:
     return CalendarService(GoogleOAuthService())
+
+
+def _build_sync_engine() -> SyncEngine:
+    oauth = GoogleOAuthService()
+    cal = CalendarService(oauth)
+    return SyncEngine(oauth, cal)
 
 
 async def _push_task_to_google(db: AsyncSession, user: User, task: Task):
@@ -75,10 +82,19 @@ async def check_collision(
     start_time: datetime,
     end_time: datetime,
     exclude_task_id: Optional[int] = None,
+    current_user: Optional[User] = None,
 ):
     """Raise 409 if a task or fixed-slot collision is detected."""
     if start_time >= end_time:
         return
+
+    # Auto-sync from Google Calendar so un-pulled events are caught
+    if current_user and current_user.google_refresh_token:
+        try:
+            engine = _build_sync_engine()
+            await engine.sync_from_google(db, user_id)
+        except Exception as e:
+            print(f"[collision] Auto-sync failed (continuing with local data): {e}")
 
     # Task collision: overlap = (StartA < EndB) and (EndA > StartB)
     query = select(Task).where(
@@ -101,15 +117,45 @@ async def check_collision(
         )
 
     # Fixed-slot (recurring) collision — weekly fields
-    day_name = start_time.strftime("%A")
-    t_start = start_time.time()
-    t_end = end_time.time()
+    # Convert UTC task times to user's local timezone before comparing
+    # because recurring slots store times in the user's local timezone
+    from zoneinfo import ZoneInfo
+    user_tz_name = "UTC"  # fallback
+    if current_user and current_user.profile and current_user.profile.timezone:
+        user_tz_name = current_user.profile.timezone
+    try:
+        user_tz = ZoneInfo(user_tz_name)
+    except Exception:
+        user_tz = ZoneInfo("UTC")
+
+    # Convert to user's local timezone
+    local_start = start_time.astimezone(user_tz) if start_time.tzinfo else start_time
+    local_end = end_time.astimezone(user_tz) if end_time.tzinfo else end_time
+    day_name = local_start.strftime("%A")
+    t_start = local_start.time().replace(tzinfo=None)
+    t_end = local_end.time().replace(tzinfo=None)
+
+    print(f"[collision] User timezone: {user_tz_name}")
+    print(f"[collision] Checking recurring slots: task_day={day_name!r} task_start={t_start!r} task_end={t_end!r} (local time)")
+
+    # Debug: show all recurring slots for this user
+    all_slots_result = await db.execute(
+        select(FixedSlot).where(
+            FixedSlot.user_id == user_id,
+            FixedSlot.day_of_week.isnot(None),
+            FixedSlot.is_deleted == False,
+        )
+    )
+    all_slots = all_slots_result.scalars().all()
+    for s in all_slots:
+        print(f"[collision]   slot id={s.id} day={s.day_of_week!r} start={s.start_time!r} end={s.end_time!r} title={s.title!r}")
 
     query = select(FixedSlot).where(
         FixedSlot.user_id == user_id,
         FixedSlot.day_of_week == day_name,
         FixedSlot.start_time < t_end,
         FixedSlot.end_time > t_start,
+        FixedSlot.is_deleted == False,
     )
     result = await db.execute(query)
     slot_conflict = result.scalars().first()
@@ -118,9 +164,11 @@ async def check_collision(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
                 f"Time slot overlaps with fixed schedule: '{slot_conflict.title}' "
-                f"({slot_conflict.start_time} - {slot_conflict.end_time})"
+                f"({slot_conflict.day_of_week} {slot_conflict.start_time} - {slot_conflict.end_time})"
             ),
         )
+    else:
+        print(f"[collision] No recurring slot collision found")
 
     # Fixed-slot (Google Calendar busy slots) — absolute datetime fields
     query = select(FixedSlot).where(
@@ -188,7 +236,7 @@ async def create_task(
             raise HTTPException(status_code=404, detail="Course not found")
 
     if task_in.scheduled_start_time and task_in.scheduled_end_time:
-        await check_collision(db, current_user.id, task_in.scheduled_start_time, task_in.scheduled_end_time)
+        await check_collision(db, current_user.id, task_in.scheduled_start_time, task_in.scheduled_end_time, current_user=current_user)
 
     task = Task(
         user_id=current_user.id,
@@ -243,7 +291,7 @@ async def update_task(
     new_end = task_in.scheduled_end_time if task_in.scheduled_end_time is not None else task.scheduled_end_time
 
     if new_start and new_end:
-        await check_collision(db, current_user.id, new_start, new_end, exclude_task_id=task.id)
+        await check_collision(db, current_user.id, new_start, new_end, exclude_task_id=task.id, current_user=current_user)
 
     for field, value in task_in.model_dump(exclude_unset=True).items():
         setattr(task, field, value)
