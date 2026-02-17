@@ -14,7 +14,8 @@ def send_password_reset_email(to_email: str, token: str) -> bool:
         print(f"[EMAIL] SMTP not configured. Token for {to_email}: {token}")
         return False
 
-    reset_link = f"http://localhost:3000/reset-password?token={token}"
+    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+    reset_link = f"{frontend_url}/reset-password?token={token}"
 
     subject = f"{settings.EMAILS_FROM_NAME} — Password Reset"
     html_body = f"""
