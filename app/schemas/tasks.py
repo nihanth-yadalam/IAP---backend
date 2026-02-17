@@ -66,6 +66,7 @@ class TaskResponse(TaskBase):
     id: int
     user_id: int
     created_at: datetime
+    google_event_id: Optional[str] = None
     course: Optional[CourseInTask] = None
 
     model_config = ConfigDict(from_attributes=True)

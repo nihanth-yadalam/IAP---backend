@@ -109,68 +109,137 @@ class SyncEngine:
         """Fetch changes from Google Calendar (incremental sync)."""
         user = await db.get(User, user_id)
         if not user or not user.google_refresh_token:
+            print(f"[sync] User {user_id} has no refresh token, skipping")
             return
 
         sync_state = await self._get_sync_state(db, user_id)
         calendar_id = sync_state.google_calendar_id if sync_state else "primary"
         sync_token = sync_state.sync_token if sync_state else None
 
+        print(f"[sync] Starting pull for user {user_id}, calendar={calendar_id}, has_sync_token={sync_token is not None}")
+
         try:
             events_result = self.calendar_service.list_events(
                 user.google_refresh_token, calendar_id, sync_token
             )
 
-            for event in events_result.get("items", []):
-                await self._process_google_event(db, user_id, event)
+            items = events_result.get("items", [])
+            print(f"[sync] Fetched {len(items)} events from Google Calendar")
+
+            imported = 0
+            skipped = 0
+            for event in items:
+                try:
+                    was_imported = await self._process_google_event(db, user_id, event)
+                    if was_imported:
+                        imported += 1
+                    else:
+                        skipped += 1
+                except Exception as e:
+                    print(f"[sync] Error processing event {event.get('id', '?')}: {e}")
+
+            print(f"[sync] Done: imported={imported}, skipped={skipped}")
 
             new_sync_token = events_result.get("nextSyncToken")
             if new_sync_token:
                 await self._update_sync_token(db, user_id, new_sync_token)
+                print(f"[sync] Sync token updated")
 
         except HttpError as e:
-            if getattr(getattr(e, "resp", None), "status", None) == 410:
+            status_code = getattr(getattr(e, "resp", None), "status", None)
+            print(f"[sync] HttpError {status_code}: {e}")
+            if status_code == 410:
+                print("[sync] Sync token expired, performing full resync")
                 await self._full_resync(db, user_id)
             else:
                 raise
+        except Exception as e:
+            print(f"[sync] Unexpected error: {e}")
+            raise
 
-    async def _process_google_event(self, db: AsyncSession, user_id: int, event: dict):
-        google_event_id = event["id"]
-        result = await db.execute(
+    async def _process_google_event(self, db: AsyncSession, user_id: int, event: dict) -> bool:
+        """Process a single Google Calendar event. Returns True if imported/updated."""
+        google_event_id = event.get("id")
+        if not google_event_id:
+            return False
+
+        # Check if this event was pushed from a Task (keep task in sync)
+        from app.models.task import Task
+        task_result = await db.execute(
+            select(Task).where(Task.google_event_id == google_event_id, Task.user_id == user_id)
+        )
+        existing_task = task_result.scalars().first()
+
+        # Check if this event already exists as a FixedSlot
+        slot_result = await db.execute(
             select(FixedSlot).where(FixedSlot.google_event_id == google_event_id)
         )
-        existing_slot = result.scalars().first()
+        existing_slot = slot_result.scalars().first()
 
-        # Handle deleted events
+        # Handle deleted/cancelled events
         if event.get("status") == "cancelled":
+            if existing_task:
+                existing_task.google_event_id = None  # Unlink, don't delete the task
+                await db.commit()
             if existing_slot:
-                if existing_slot.last_updated_source == "APP":
-                    return
                 existing_slot.is_deleted = True
                 existing_slot.last_updated_source = "GOOGLE"
                 existing_slot.last_updated_at = datetime.utcnow()
                 await db.commit()
-            return
+            return True
 
-        event_data = {
-            "title": event.get("summary", "Untitled"),
-            "google_start_datetime": self._parse_datetime(event["start"]),
-            "google_end_datetime": self._parse_datetime(event["end"]),
-            "google_event_id": google_event_id,
-            "is_google_event": True,
-            "last_updated_source": "GOOGLE",
-            "last_updated_at": datetime.utcnow(),
-        }
+        # Parse start/end — skip events that don't have proper time info
+        start_raw = event.get("start")
+        end_raw = event.get("end")
+        if not start_raw or not end_raw:
+            print(f"[sync] Skipping event {google_event_id}: missing start/end")
+            return False
 
+        parsed_start = self._parse_datetime(start_raw)
+        parsed_end = self._parse_datetime(end_raw)
+        title = event.get("summary", "Untitled")
+
+        # ── Update existing Task (pushed from Schedora) ──
+        if existing_task:
+            existing_task.title = title
+            existing_task.scheduled_start_time = parsed_start
+            existing_task.scheduled_end_time = parsed_end
+            await db.commit()
+            return True
+
+        # ── Update existing FixedSlot ──
         if existing_slot:
+            event_data = {
+                "title": title,
+                "google_start_datetime": parsed_start,
+                "google_end_datetime": parsed_end,
+                "google_event_id": google_event_id,
+                "is_google_event": True,
+                "last_updated_source": "GOOGLE",
+                "last_updated_at": datetime.utcnow(),
+            }
             if existing_slot.last_updated_source == "APP" and self._events_match(existing_slot, event_data):
-                return
+                return False  # No change
             for key, value in event_data.items():
                 setattr(existing_slot, key, value)
             await db.commit()
-        else:
-            new_slot = FixedSlot(user_id=user_id, **event_data)
-            db.add(new_slot)
-            await db.commit()
+            return True
+
+        # ── New event from Google → create as FixedSlot (busy slot) ──
+        new_slot = FixedSlot(
+            user_id=user_id,
+            title=title,
+            google_start_datetime=parsed_start,
+            google_end_datetime=parsed_end,
+            google_event_id=google_event_id,
+            is_google_event=True,
+            last_updated_source="GOOGLE",
+            last_updated_at=datetime.utcnow(),
+        )
+        db.add(new_slot)
+        await db.commit()
+        print(f"[sync] Imported event '{title}' as busy slot")
+        return True
 
     def _events_match(self, slot, event_data: dict) -> bool:
         time_tolerance = timedelta(seconds=5)

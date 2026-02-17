@@ -18,6 +18,7 @@ from app.api import deps
 from app.core.config import settings
 from app.models.user import User
 from app.models.schedule import FixedSlot
+from app.models.task import Task
 from app.models.sync import CalendarSyncState
 from app.services.google_oauth import GoogleOAuthService
 from app.services.calendar_service import CalendarService
@@ -111,25 +112,27 @@ async def sync_status(
     }
 
 
-# ── M30 — Push all un-synced slots ───────────────────────────────────
+# ── M30 — Push all un-synced slots + tasks ───────────────────────────
 
 @router.post("/push-all")
 async def push_all_to_google(
     db: Annotated[AsyncSession, Depends(deps.get_db)],
     current_user: Annotated[User, Depends(deps.get_current_user)],
 ) -> Any:
-    """Push all un-synced local slots to Google Calendar."""
+    """Push all un-synced local slots AND scheduled tasks to Google Calendar."""
     if not current_user.google_refresh_token:
         raise HTTPException(status_code=400, detail="User has not completed Google OAuth")
 
     engine = _build_sync_engine()
+    cal = CalendarService(GoogleOAuthService())
 
+    # ── Push un-synced FixedSlots ──
     result = await db.execute(
         select(FixedSlot).where(FixedSlot.user_id == current_user.id, FixedSlot.is_google_event == False)
     )
     slots = result.scalars().all()
 
-    pushed = 0
+    pushed_slots = 0
     errors = []
     for slot in slots:
         try:
@@ -137,11 +140,47 @@ async def push_all_to_google(
             slot.last_updated_at = datetime.utcnow()
             await db.commit()
             await engine.push_to_google(db, current_user.id, slot.id)
-            pushed += 1
+            pushed_slots += 1
         except Exception as exc:
-            errors.append({"slot_id": slot.id, "error": str(exc)})
+            errors.append({"type": "slot", "id": slot.id, "error": str(exc)})
 
-    return {"status": "push_completed", "pushed": pushed, "errors": errors}
+    # ── Push un-synced Tasks ──
+    result = await db.execute(
+        select(Task).where(
+            Task.user_id == current_user.id,
+            Task.scheduled_start_time.isnot(None),
+            Task.scheduled_end_time.isnot(None),
+        )
+    )
+    tasks = result.scalars().all()
+
+    pushed_tasks = 0
+    for task in tasks:
+        slot_data = {
+            "title": task.title,
+            "google_start_datetime": task.scheduled_start_time,
+            "google_end_datetime": task.scheduled_end_time,
+        }
+        try:
+            if task.google_event_id:
+                # Update existing event
+                cal.update_event(current_user.google_refresh_token, "primary", task.google_event_id, slot_data)
+            else:
+                # Create new event
+                event_id = cal.create_event(current_user.google_refresh_token, "primary", slot_data)
+                task.google_event_id = event_id
+            pushed_tasks += 1
+        except Exception as exc:
+            errors.append({"type": "task", "id": task.id, "error": str(exc)})
+
+    await db.commit()
+
+    return {
+        "status": "push_completed",
+        "pushed_slots": pushed_slots,
+        "pushed_tasks": pushed_tasks,
+        "errors": errors,
+    }
 
 
 # ── M31 — Re-initialize calendar sync ────────────────────────────────

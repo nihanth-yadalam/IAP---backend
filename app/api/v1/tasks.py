@@ -19,8 +19,52 @@ from app.models.user import User
 from app.models.task import Task, Course
 from app.models.schedule import FixedSlot
 from app.schemas.tasks import TaskCreate, TaskUpdate, TaskResponse
+from app.services.google_oauth import GoogleOAuthService
+from app.services.calendar_service import CalendarService
 
 router = APIRouter()
+
+
+# ── Google Calendar helpers for tasks ─────────────────────────────────
+
+def _calendar_service() -> CalendarService:
+    return CalendarService(GoogleOAuthService())
+
+
+async def _push_task_to_google(db: AsyncSession, user: User, task: Task):
+    """Create or update a Google Calendar event for a task."""
+    if not user.google_refresh_token:
+        return
+    if not task.scheduled_start_time or not task.scheduled_end_time:
+        return
+
+    cal = _calendar_service()
+    slot_data = {
+        "title": task.title,
+        "google_start_datetime": task.scheduled_start_time,
+        "google_end_datetime": task.scheduled_end_time,
+    }
+
+    try:
+        if task.google_event_id:
+            cal.update_event(user.google_refresh_token, "primary", task.google_event_id, slot_data)
+        else:
+            event_id = cal.create_event(user.google_refresh_token, "primary", slot_data)
+            task.google_event_id = event_id
+            await db.commit()
+    except Exception as e:
+        print(f"[task-sync] Failed to push task {task.id} to Google: {e}")
+
+
+async def _delete_task_from_google(user: User, google_event_id: str | None):
+    """Delete a Google Calendar event for a task."""
+    if not user.google_refresh_token or not google_event_id:
+        return
+    cal = _calendar_service()
+    try:
+        cal.delete_event(user.google_refresh_token, "primary", google_event_id)
+    except Exception as e:
+        print(f"[task-sync] Failed to delete event {google_event_id} from Google: {e}")
 
 
 # ── Collision checker ─────────────────────────────────────────────────
@@ -56,7 +100,7 @@ async def check_collision(
             ),
         )
 
-    # Fixed-slot (recurring) collision
+    # Fixed-slot (recurring) collision — weekly fields
     day_name = start_time.strftime("%A")
     t_start = start_time.time()
     t_end = end_time.time()
@@ -73,8 +117,26 @@ async def check_collision(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                f"Time slot overlaps with fixed schedule: '{slot_conflict.label}' "
+                f"Time slot overlaps with fixed schedule: '{slot_conflict.title}' "
                 f"({slot_conflict.start_time} - {slot_conflict.end_time})"
+            ),
+        )
+
+    # Fixed-slot (Google Calendar busy slots) — absolute datetime fields
+    query = select(FixedSlot).where(
+        FixedSlot.user_id == user_id,
+        FixedSlot.google_start_datetime < end_time,
+        FixedSlot.google_end_datetime > start_time,
+        FixedSlot.is_deleted == False,
+    )
+    result = await db.execute(query)
+    google_conflict = result.scalars().first()
+    if google_conflict:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Time slot overlaps with Google Calendar event: '{google_conflict.title}' "
+                f"({google_conflict.google_start_datetime} - {google_conflict.google_end_datetime})"
             ),
         )
 
@@ -145,6 +207,9 @@ async def create_task(
     await db.commit()
     await db.refresh(task)
 
+    # Push to Google Calendar
+    await _push_task_to_google(db, current_user, task)
+
     if task.course_id:
         stmt = select(Task).options(selectinload(Task.course)).where(Task.id == task.id)
         result = await db.execute(stmt)
@@ -186,6 +251,10 @@ async def update_task(
     db.add(task)
     await db.commit()
     await db.refresh(task)
+
+    # Push changes to Google Calendar
+    await _push_task_to_google(db, current_user, task)
+
     return task
 
 
@@ -204,6 +273,10 @@ async def delete_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    # Delete from Google Calendar first
+    await _delete_task_from_google(current_user, task.google_event_id)
+
     await db.delete(task)
     await db.commit()
     return {"message": "Task deleted successfully"}
+

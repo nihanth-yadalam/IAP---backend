@@ -90,6 +90,9 @@ class Task(Base):
     )
     is_high_burden: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Google Calendar sync
+    google_event_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
     # Relationships
     user = relationship("User", back_populates="tasks")
     course = relationship("Course", back_populates="tasks")

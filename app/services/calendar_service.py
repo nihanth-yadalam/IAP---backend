@@ -95,10 +95,41 @@ class CalendarService:
         creds = self.oauth_service.get_valid_credentials(refresh_token)
         service = build("calendar", "v3", credentials=creds)
 
-        if sync_token:
-            return service.events().list(calendarId=calendar_id, syncToken=sync_token).execute()
-        else:
-            time_min = (datetime.utcnow() - timedelta(days=30)).isoformat() + "Z"
-            return service.events().list(
-                calendarId=calendar_id, singleEvents=True, timeMin=time_min
-            ).execute()
+        all_items = []
+        page_token = None
+
+        while True:
+            if sync_token and not page_token:
+                # Incremental sync — use syncToken for first request only
+                result = service.events().list(
+                    calendarId=calendar_id,
+                    syncToken=sync_token,
+                    pageToken=page_token,
+                ).execute()
+            elif page_token:
+                # Follow-up pages (works for both incremental and full sync)
+                result = service.events().list(
+                    calendarId=calendar_id,
+                    pageToken=page_token,
+                ).execute()
+            else:
+                # Full sync — fetch recent events
+                time_min = (datetime.utcnow() - timedelta(days=30)).isoformat() + "Z"
+                result = service.events().list(
+                    calendarId=calendar_id,
+                    singleEvents=True,
+                    timeMin=time_min,
+                    orderBy="startTime",
+                ).execute()
+
+            all_items.extend(result.get("items", []))
+
+            page_token = result.get("nextPageToken")
+            if not page_token:
+                break
+
+        # Return combined result with the final sync token
+        return {
+            "items": all_items,
+            "nextSyncToken": result.get("nextSyncToken"),
+        }
