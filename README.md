@@ -1,120 +1,210 @@
-# Intelligent Academic Planner — Backend
+# L1 Intelligent Academic Planner — Backend API
 
-A unified **FastAPI** backend merging two systems:
-
-- **System A** — Academic planner with JWT auth, user management, courses, tasks (with collision detection), and onboarding.
-- **System B** — Google Calendar two-way sync, OAuth integration, webhook-based real-time updates, and background sync scheduler.
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Framework | FastAPI (async) |
-| ORM | SQLAlchemy 2.0 (async) |
-| Database | PostgreSQL + asyncpg |
-| Migrations | Alembic (async) |
-| Auth | JWT (python-jose) + bcrypt |
-| Google Integration | google-api-python-client, google-auth-oauthlib |
-| Background Jobs | APScheduler (AsyncIOScheduler) |
-| Validation | Pydantic v2 |
+<p align="center">
+  <strong>A FastAPI backend that acts as a "Digital Twin" for students</strong><br>
+  AI-powered academic scheduling with energy-based planning, Google Calendar sync, and behavioral analytics
+</p>
 
 ---
 
-## API Routes (33 endpoints)
+## 📖 Project Overview
 
-| Group | Endpoints |
-|---|---|
-| **Auth** | `POST /login/access-token`, `GET /google/authorize`, `GET /google/callback` |
-| **Users** | `POST /users/`, `GET /users/me`, `PUT /users/me/profile`, `POST /users/me/password`, `POST /users/password-recovery/{email}`, `POST /users/reset-password/` |
-| **Admin** | `GET /admin/users` |
-| **Onboarding** | `GET /onboarding/status`, `POST /onboarding/questionnaire` |
-| **Courses** | `GET /courses/`, `POST /courses/`, `PATCH /courses/{id}`, `DELETE /courses/{id}` |
-| **Tasks** | `GET /tasks/`, `POST /tasks/`, `PATCH /tasks/{id}`, `DELETE /tasks/{id}` |
-| **Schedule** | `GET /schedule/fixed`, `POST /schedule/fixed`, `POST /schedule/slots`, `PUT /schedule/slots/{id}`, `DELETE /schedule/slots/{id}` |
-| **Sync** | `POST /sync/trigger`, `POST /sync/reset`, `GET /sync/status`, `POST /sync/push-all`, `POST /sync/initialize` |
-| **Webhooks** | `POST /webhooks/google-calendar`, `POST /webhooks/setup` |
+**L1: Intelligent Academic Planner** is a web-based productivity platform designed to solve the disconnect between planning and execution that students face daily. Unlike passive calendar applications that treat every hour as equal, L1 uses AI to model the user's habits, learning style, and energy levels to create realistic, achievable schedules.
 
-All routes are prefixed with `/api/v1`. Interactive docs at `http://localhost:8000/docs`.
+### The Problem
+Students face three critical planning challenges:
+- **Optimism Bias**: Consistent underestimation of task durations
+- **Mental Energy**: Standard calendars ignore human fatigue and burnout
+- **Dynamic Chaos**: Missed deadlines make static calendars obsolete
+
+### The Solution
+L1 integrates academic context (deadlines, course difficulty) with behavioral health (burnout risk, procrastination patterns) to create a personalized, adaptive scheduling system that moves beyond "managing time" to **managing energy and focus**.
+
+### Core Innovation
+- **"Cold Start" Solution**: Initial profiling questionnaire establishes baseline user archetype
+- **"Digital Twin" Memory**: Rolling "Reflexion" architecture learns user patterns over time
+- **Energy-Based Scheduling**: Feedback loop records task drain to prevent burnout
+- **Google Calendar Integration**: Seamless two-way sync with existing workflows
 
 ---
 
-## Project Structure
+## 🎯 Current Implementation Status
+
+### ✅ **Sprint 1 Complete** (Epic 1, 2, and Story 3.1)
+
+#### Epic 1: User Authentication & Profile Management
+- ✅ Sign-Up & Account Creation
+- ✅ Secure Login & Session Management (JWT)
+- ✅ Password Recovery via Email
+- ✅ Profile Management (Name, University, Major)
+- ✅ Data Privacy & Account Deletion
+
+#### Epic 2: Onboarding & The "Cold Start" Solution
+- ✅ First-Run Welcome Experience
+- ✅ Initial Profiling Questionnaire (Chronotype, Subject Confidence, Study Preferences)
+- ✅ Weekly Fixed Schedule Setup (Recurring Busy Slots)
+- ✅ Google Calendar Import (Read existing events)
+- ✅ Google Calendar Export (Write scheduled tasks back)
+
+#### Epic 3: Task Management & Intelligent Scheduling
+- ✅ **Story 3.1**: Manual Task Entry (Users can manually add tasks with calendar slots)
+
+### 🚧 **Planned for Future Sprints**
+- Story 3.2-3.5: AI time estimation, energy matching, task decomposition
+- Epic 4: Dynamic rescheduling and gap-filler logic
+- Epic 5: Adaptive intelligence with reflexion agents
+- Epic 6: Analytics dashboard and wellbeing metrics
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology | Purpose |
+|---|---|---|
+| **Framework** | FastAPI (async) | High-performance API with auto-generated docs |
+| **ORM** | SQLAlchemy 2.0 (async) | Type-safe database interactions |
+| **Database** | PostgreSQL + asyncpg | Relational data + JSONB for AI memory |
+| **Migrations** | Alembic (async) | Schema versioning and updates |
+| **Authentication** | JWT (python-jose) + bcrypt | Secure stateless sessions |
+| **Google Integration** | google-api-python-client | OAuth2 + Calendar API |
+| **Background Jobs** | APScheduler | Webhook renewal, periodic sync |
+| **Validation** | Pydantic v2 | Request/response schema validation |
+| **Email** | SMTP (configurable) | Password recovery notifications |
+
+---
+
+## 📂 Project Structure
 
 ```
-iap-backend/
+Backend/
 ├── app/
-│   ├── main.py                 # FastAPI entrypoint + lifespan
+│   ├── main.py                      # FastAPI application entrypoint
 │   ├── api/
-│   │   ├── deps.py             # DB session, JWT auth dependencies
-│   │   └── v1/                 # Route handlers (auth, users, admin, etc.)
+│   │   ├── deps.py                  # Dependency injection (DB, auth)
+│   │   └── v1/                      # API v1 routes
+│   │       ├── router.py            # Main router aggregator
+│   │       ├── auth.py              # Login, Google OAuth
+│   │       ├── users.py             # User CRUD, password reset
+│   │       ├── admin.py             # Admin endpoints
+│   │       ├── onboarding.py        # Questionnaire, status
+│   │       ├── courses.py           # Course/subject management
+│   │       ├── tasks.py             # Task CRUD
+│   │       ├── schedule.py          # Fixed slots, calendar slots
+│   │       ├── sync.py              # Google Calendar sync triggers
+│   │       └── webhooks.py          # Google Calendar webhooks
 │   ├── core/
-│   │   ├── config.py           # Pydantic Settings (.env loader)
-│   │   ├── security.py         # Password hashing, JWT creation
-│   │   └── utils.py            # Password reset token helpers
+│   │   ├── config.py                # Environment config (Pydantic)
+│   │   ├── security.py              # Password hashing, JWT generation
+│   │   └── utils.py                 # Password reset token utilities
 │   ├── db/
-│   │   ├── base.py             # SQLAlchemy DeclarativeBase
-│   │   └── session.py          # Async engine + session factory
-│   ├── models/                 # SQLAlchemy ORM models
-│   ├── schemas/                # Pydantic request/response schemas
-│   ├── services/               # Google OAuth, Calendar API, Sync engine
+│   │   ├── base.py                  # SQLAlchemy declarative base
+│   │   └── session.py               # Async engine + session factory
+│   ├── models/                      # SQLAlchemy ORM models
+│   │   ├── user.py                  # User, UserProfile
+│   │   ├── task.py                  # Course, Task
+│   │   ├── schedule.py              # FixedSlot, ScheduleSlot
+│   │   └── sync.py                  # CalendarSyncState
+│   ├── schemas/                     # Pydantic request/response schemas
+│   │   ├── user.py
+│   │   ├── onboarding.py
+│   │   ├── courses.py
+│   │   ├── tasks.py
+│   │   └── schedule.py
+│   ├── services/                    # Business logic services
+│   │   ├── google_oauth.py          # OAuth2 flow management
+│   │   ├── calendar_service.py      # Google Calendar API wrapper
+│   │   ├── sync_engine.py           # Two-way sync logic
+│   │   └── email_service.py         # SMTP email service
 │   └── background/
-│       └── scheduler.py        # APScheduler (webhook renewal, periodic sync)
-├── alembic/                    # Database migrations
-├── .env.example                # Environment variable template
-├── alembic.ini
-├── requirements.txt
-└── README.md
+│       └── scheduler.py             # APScheduler for background tasks
+├── alembic/                         # Database migrations
+│   ├── versions/                    # Migration scripts
+│   └── env.py                       # Alembic configuration
+├── scripts/                         # Utility scripts
+├── tests/                           # Test suite
+├── .env.example                     # Environment template
+├── requirements.txt                 # Python dependencies
+├── alembic.ini                      # Alembic config
+└── README.md                        # This file
 ```
 
 ---
 
-## Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
-
 - **Python 3.11+**
-- **PostgreSQL** running locally (default: `localhost:5432`)
+- **PostgreSQL 13+**
+- **Google Cloud Project** (for OAuth and Calendar API)
 
-### 1. Clone & set up environment
-
+### 1. Clone the repository
 ```bash
-git clone <repo-url>
-cd iap-backend
+git clone <repository-url>
+cd Backend
+```
+
+### 2. Create virtual environment
+```bash
 python -m venv venv
+
 # Windows
 venv\Scripts\activate
+
 # macOS/Linux
 source venv/bin/activate
+```
+
+### 3. Install dependencies
+```bash
 pip install -r requirements.txt
 ```
 
-### 2. Configure environment variables
+### 4. Configure environment variables
+Create a `.env` file in the root directory:
 
+```env
+# Database
+DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/iap_db
+
+# JWT Security
+SECRET_KEY=your-secret-key-here-min-32-chars
+ACCESS_TOKEN_EXPIRE_MINUTES=10080
+
+# Google OAuth
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+OAUTH_REDIRECT_URI=http://localhost:8000/api/v1/google/callback
+
+# Webhooks (use ngrok for local development)
+WEBHOOK_BASE_URL=https://your-ngrok-url.ngrok.io
+
+# Email (for password recovery)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=your-app-password
+EMAILS_FROM_EMAIL=noreply@iap.com
+```
+
+### 5. Set up Google OAuth
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select existing
+3. Enable **Google Calendar API**
+4. Create OAuth 2.0 credentials (Web application)
+5. Add authorized redirect URI: `http://localhost:8000/api/v1/google/callback`
+6. Copy Client ID and Secret to `.env`
+
+### 6. Create database
 ```bash
-cp .env.example .env
-# Edit .env with your database credentials, secret key, and Google OAuth keys
-```
+# Connect to PostgreSQL
+psql -U postgres
 
-Key variables:
-
-| Variable | Description |
-|---|---|
-| `DATABASE_URL` | `postgresql+asyncpg://user:password@localhost:5432/iap_db` |
-| `SECRET_KEY` | Random string for JWT signing |
-| `GOOGLE_CLIENT_ID` | From Google Cloud Console |
-| `GOOGLE_CLIENT_SECRET` | From Google Cloud Console |
-| `WEBHOOK_BASE_URL` | Public HTTPS URL (e.g. ngrok) for Google Calendar webhooks |
-
-### 3. Create the database
-
-```sql
+# Create database
 CREATE DATABASE iap_db;
+\q
 ```
 
-### 4. Run migrations
-
+### 7. Run migrations
 ```bash
 # Windows PowerShell
 $env:PYTHONPATH = "."
@@ -124,26 +214,363 @@ alembic upgrade head
 PYTHONPATH=. alembic upgrade head
 ```
 
-### 5. Start the server
-
+### 8. Start the server
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
-Visit **http://localhost:8000/docs** for the Swagger UI.
+The API will be available at:
+- **API**: http://localhost:8000
+- **Interactive Docs (Swagger)**: http://localhost:8000/docs
+- **Alternative Docs (ReDoc)**: http://localhost:8000/redoc
 
 ---
 
-## Google Calendar Integration
+## 📡 API Endpoints
 
-1. Register → Login → get JWT token
-2. `GET /api/v1/google/authorize` (with Bearer token) → opens Google consent
-3. Google redirects to `/api/v1/google/callback` → refresh token stored, sync initialized
-4. Slots created via `/api/v1/schedule/slots` auto-push to Google Calendar
-5. Changes in Google Calendar sync back via webhooks or `POST /api/v1/sync/trigger`
+### Authentication (`/api/v1`)
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| POST | `/login/access-token` | Login with username/password | ❌ |
+| GET | `/google/authorize` | Get Google OAuth URL | ✅ |
+| GET | `/google/callback` | OAuth callback handler | ❌ |
+
+### User Management (`/api/v1/users`)
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| POST | `/users/` | Register new user | ❌ |
+| GET | `/users/me` | Get current user profile | ✅ |
+| PUT | `/users/me/profile` | Update profile (name, major, etc.) | ✅ |
+| POST | `/users/me/password` | Change password | ✅ |
+| POST | `/users/password-recovery/{email}` | Request password reset | ❌ |
+| POST | `/users/reset-password/` | Reset password with token | ❌ |
+
+### Onboarding (`/api/v1/onboarding`)
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| GET | `/onboarding/status` | Check onboarding completion | ✅ |
+| POST | `/onboarding/questionnaire` | Submit initial profile data | ✅ |
+
+### Courses (`/api/v1/courses`)
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| GET | `/courses/` | List all user courses | ✅ |
+| POST | `/courses/` | Create new course | ✅ |
+| PATCH | `/courses/{id}` | Update course details | ✅ |
+| DELETE | `/courses/{id}` | Delete course | ✅ |
+
+### Tasks (`/api/v1/tasks`)
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| GET | `/tasks/` | List tasks with filters | ✅ |
+| POST | `/tasks/` | Create new task | ✅ |
+| PATCH | `/tasks/{id}` | Update task | ✅ |
+| DELETE | `/tasks/{id}` | Delete task | ✅ |
+
+### Schedule (`/api/v1/schedule`)
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| GET | `/schedule/fixed` | Get fixed busy slots | ✅ |
+| POST | `/schedule/fixed` | Create fixed slot (recurring) | ✅ |
+| POST | `/schedule/slots` | Create schedule slot (task instance) | ✅ |
+| PUT | `/schedule/slots/{id}` | Update schedule slot | ✅ |
+| DELETE | `/schedule/slots/{id}` | Delete schedule slot | ✅ |
+
+### Calendar Sync (`/api/v1/sync`)
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| POST | `/sync/trigger` | Manually trigger sync | ✅ |
+| GET | `/sync/status` | Get sync status | ✅ |
+| POST | `/sync/reset` | Reset sync state | ✅ |
+| POST | `/sync/push-all` | Push all slots to Google | ✅ |
+| POST | `/sync/initialize` | Initialize sync after OAuth | ✅ |
+
+### Webhooks (`/api/v1/webhooks`)
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| POST | `/webhooks/google-calendar` | Receive Google calendar updates | ❌ |
+| POST | `/webhooks/setup` | Setup webhook channel | ✅ |
+
+### Admin (`/api/v1/admin`)
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| GET | `/admin/users` | List all users (admin only) | ✅ |
+
+> **Note**: For detailed request/response schemas, visit `/docs` when the server is running.
 
 ---
 
-## License
+## 🗄️ Database Schema
 
-This project is licensed under the MIT License — see [LICENSE](LICENSE) for details.
+### Core Tables
+
+#### `users`
+Stores authentication credentials and Google OAuth tokens.
+```sql
+- id (serial, PK)
+- email (varchar, unique)
+- username (varchar, unique)
+- hashed_password (varchar)
+- google_refresh_token (varchar, nullable)
+- is_active (boolean)
+- created_at (timestamp)
+```
+
+#### `user_profiles`
+Stores the "Digital Twin" memory and baseline profile data.
+```sql
+- user_id (integer, PK, FK → users.id)
+- full_name (varchar)
+- major (varchar)
+- university (varchar)
+- current_archetype (varchar) -- e.g., "The Night Owl"
+- onboarding_data (jsonb)      -- Chronotype, confidence scores, duration multipliers
+```
+
+#### `courses`
+Subjects/courses for categorizing tasks.
+```sql
+- id (serial, PK)
+- user_id (integer, FK → users.id)
+- name (varchar)
+- code (varchar)
+- term (varchar)
+- color_code (varchar)         -- Hex color for UI
+- default_priority (varchar)
+```
+
+#### `tasks`
+Student assignments, exams, and projects.
+```sql
+- id (serial, PK)
+- user_id (integer, FK → users.id)
+- course_id (integer, FK → courses.id, nullable)
+- title (varchar)
+- description (text)
+- category (varchar)           -- Assignment, Exam, Project
+- priority (varchar)           -- Low, Medium, High
+- deadline (timestamp)
+- estimated_duration_mins (integer)
+- is_high_burden (boolean)
+- status (varchar)             -- Pending, In Progress, Completed
+- parent_task_id (integer, FK → tasks.id, nullable)
+- created_at (timestamp)
+```
+
+#### `fixed_slots`
+Recurring weekly commitments (classes, labs).
+```sql
+- id (serial, PK)
+- user_id (integer, FK → users.id)
+- day_of_week (varchar)        -- Monday, Tuesday, etc.
+- start_time (time)
+- end_time (time)
+- label (varchar)
+- is_google_event (boolean)
+- google_event_id (varchar, nullable)
+```
+
+#### `schedule_slots`
+Scheduled instances of tasks on the calendar.
+```sql
+- id (serial, PK)
+- user_id (integer, FK → users.id)
+- task_id (integer, FK → tasks.id, nullable)
+- title (varchar)
+- start_datetime (timestamp with timezone)
+- end_datetime (timestamp with timezone)
+- is_manual (boolean)          -- Manual vs AI-scheduled
+- google_event_id (varchar, nullable)
+- google_calendar_id (varchar)
+```
+
+#### `calendar_sync_state`
+Tracks Google Calendar synchronization state.
+```sql
+- user_id (integer, PK, FK → users.id)
+- google_calendar_id (varchar)
+- sync_token (varchar, nullable)
+- last_sync_at (timestamp, nullable)
+- webhook_channel_id (varchar, nullable)
+- webhook_expiration (timestamp, nullable)
+```
+
+### JSONB Structure: `onboarding_data`
+
+Example structure stored in `user_profiles.onboarding_data`:
+```json
+{
+  "global_settings": {
+    "chronotype": "night_owl",
+    "base_energy_level": 7,
+    "preferred_study_block_mins": 90
+  },
+  "subject_modifiers": {
+    "55": {
+      "confidence_score": 3,
+      "duration_multiplier": 1.5,
+      "drain_rate": 5
+    },
+    "56": {
+      "confidence_score": 9,
+      "duration_multiplier": 0.9,
+      "drain_rate": 2
+    }
+  }
+}
+```
+
+---
+
+## 🔗 Google Calendar Integration Flow
+
+### Initial Setup
+1. **User Registration**: Create account via `POST /users/`
+2. **Login**: Get JWT token via `POST /login/access-token`
+3. **Authorize Google**: Call `GET /google/authorize` (returns OAuth URL)
+4. **User Consent**: User grants calendar access in browser
+5. **Callback**: Google redirects to `/google/callback`
+6. **Token Storage**: Backend stores `refresh_token` in database
+7. **Sync Initialization**: Automatically imports existing calendar events
+
+### Two-Way Sync
+
+#### App → Google (Write)
+When user creates/updates/deletes a schedule slot:
+1. Slot saved to local database
+2. `CalendarService.create_event()` called
+3. Event created in Google Calendar
+4. `google_event_id` stored in database
+
+#### Google → App (Read)
+Two methods for importing changes:
+
+**Method 1: Webhooks (Real-time)**
+1. Backend sets up webhook channel via `POST /webhooks/setup`
+2. Google sends notifications to `POST /webhooks/google-calendar`
+3. `SyncEngine.sync_from_google()` fetches and applies changes
+
+**Method 2: Manual Sync**
+- User triggers `POST /sync/trigger`
+- Backend fetches changes since last sync token
+- Local database updated to match Google Calendar
+
+### Important Notes
+- **Webhook Expiration**: Channels expire after 7 days, auto-renewed by `APScheduler`
+- **Conflict Resolution**: Local database is source of truth; manual sync overwrites local changes
+- **Sync Token**: Incremental sync using `sync_token` to avoid fetching entire history
+
+---
+
+## 🧪 Development
+
+### Running Tests
+```bash
+pytest tests/ -v
+```
+
+### Creating a New Migration
+```bash
+# Auto-generate migration from model changes
+alembic revision --autogenerate -m "Description of changes"
+
+# Review generated file in alembic/versions/
+# Apply migration
+alembic upgrade head
+```
+
+### Local Development with ngrok (for webhooks)
+```bash
+# Install ngrok
+# Start ngrok tunnel
+ngrok http 8000
+
+# Copy HTTPS URL to .env as WEBHOOK_BASE_URL
+# Restart server
+```
+
+### Code Quality
+```bash
+# Format code
+black app/
+
+# Lint
+flake8 app/
+
+# Type checking
+mypy app/
+```
+
+---
+
+## 📧 Email Configuration
+
+For password recovery functionality, configure SMTP settings:
+
+**Gmail Example:**
+1. Enable 2-Factor Authentication on your Google account
+2. Generate an App Password (Security → App Passwords)
+3. Add to `.env`:
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=your-16-char-app-password
+EMAILS_FROM_EMAIL=noreply@iap.com
+```
+
+---
+
+## 🔒 Security Features
+
+- **Password Hashing**: bcrypt with automatic salt generation
+- **JWT Tokens**: Configurable expiration (default: 7 days)
+- **CORS**: Configurable allowed origins
+- **SQL Injection**: Protected via SQLAlchemy ORM
+- **Input Validation**: Pydantic schemas validate all requests
+- **OAuth2**: Secure Google Calendar integration with refresh tokens
+
+---
+
+## 📚 Additional Resources
+
+- **API Documentation**: Available at `/docs` (Swagger UI)
+- **Alternative Docs**: Available at `/redoc` (ReDoc)
+- **Project Documentation**: See `About/` folder for detailed specs
+- **Integration Guide**: See [INTEGRATION_GUIDE.txt](INTEGRATION_GUIDE.txt)
+- **Detailed API Docs**: See [API_DOCUMENTATION.md](API_DOCUMENTATION.md)
+
+---
+
+## 🤝 Contributing
+
+This is an academic project. Contributions are welcome via pull requests.
+
+### Development Workflow
+1. Create feature branch from `main`
+2. Implement changes with tests
+3. Run `pytest` and ensure all tests pass
+4. Submit pull request with clear description
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
+---
+
+## 🎓 Project Context
+
+This backend is part of the **L1 Intelligent Academic Planner** system, designed to demonstrate AI-powered academic scheduling with focus on:
+- Human-centered design (energy management, not just time management)
+- Transparent AI (explainable recommendations)
+- Privacy-first architecture (user data ownership)
+- Behavioral health integration (burnout prevention)
+
+**Current Sprint**: Epic 1-2 and Story 3.1 (Foundation + Onboarding + Manual Entry)  
+**Next Sprint**: AI time estimation, energy matching, dynamic rescheduling
+
+---
+
+<p align="center">Made with ❤️ for students struggling with time management</p>
