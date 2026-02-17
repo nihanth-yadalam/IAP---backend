@@ -179,7 +179,8 @@ class SyncEngine:
         # Handle deleted/cancelled events
         if event.get("status") == "cancelled":
             if existing_task:
-                existing_task.google_event_id = None  # Unlink, don't delete the task
+                print(f"[sync] Event '{existing_task.title}' deleted in Google → deleting task from Schedora")
+                await db.delete(existing_task)
                 await db.commit()
             if existing_slot:
                 existing_slot.is_deleted = True

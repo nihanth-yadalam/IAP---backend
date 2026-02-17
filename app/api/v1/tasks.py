@@ -16,7 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api import deps
 from app.models.user import User
-from app.models.task import Task, Course
+from app.models.task import Task, Course, TaskStatus
 from app.models.schedule import FixedSlot
 from app.schemas.tasks import TaskCreate, TaskUpdate, TaskResponse
 from app.services.google_oauth import GoogleOAuthService
@@ -300,8 +300,14 @@ async def update_task(
     await db.commit()
     await db.refresh(task)
 
-    # Push changes to Google Calendar
-    await _push_task_to_google(db, current_user, task)
+    # If task is now Completed, delete the Google Calendar event
+    if task.status == TaskStatus.Completed and task.google_event_id:
+        await _delete_task_from_google(current_user, task.google_event_id)
+        task.google_event_id = None
+        await db.commit()
+    else:
+        # Push changes to Google Calendar
+        await _push_task_to_google(db, current_user, task)
 
     return task
 
