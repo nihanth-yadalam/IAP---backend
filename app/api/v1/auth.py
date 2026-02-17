@@ -9,6 +9,7 @@ from datetime import timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -90,25 +91,35 @@ async def google_callback(
     code: str,
     state: str,
     db: Annotated[AsyncSession, Depends(deps.get_db)],
-) -> Any:
+) -> RedirectResponse:
     """
     Handle OAuth callback, store refresh token, auto-initialize calendar sync.
-    The `state` parameter carries the user_id set during /google/authorize.
+    Redirects to the frontend with status query params.
     """
+    frontend_url = settings.FRONTEND_URL.rstrip("/")
+
     try:
         user_id = int(state)
     except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail="Invalid OAuth state")
+        return RedirectResponse(
+            url=f"{frontend_url}/oauth/callback?status=error&message=Invalid+OAuth+state"
+        )
 
     user = await db.get(User, user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        return RedirectResponse(
+            url=f"{frontend_url}/oauth/callback?status=error&message=User+not+found"
+        )
 
     oauth = _oauth_service()
     try:
         tokens = oauth.exchange_code_for_tokens(code)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"OAuth failed: {e}")
+        import urllib.parse
+        msg = urllib.parse.quote(str(e))
+        return RedirectResponse(
+            url=f"{frontend_url}/oauth/callback?status=error&message={msg}"
+        )
 
     # Save refresh token on the user
     user.google_refresh_token = tokens["refresh_token"]
@@ -120,12 +131,11 @@ async def google_callback(
     if settings.WEBHOOK_BASE_URL:
         webhook_url = f"{settings.WEBHOOK_BASE_URL}/api/v1/webhooks/google-calendar"
 
-    sync_status = await engine.initialize_sync(db, user_id, webhook_url)
+    try:
+        await engine.initialize_sync(db, user_id, webhook_url)
+    except Exception:
+        pass  # Non-critical — sync can be triggered manually later
 
-    return {
-        "status": "success",
-        "message": "Authorization successful! Calendar sync initialized.",
-        "user_id": user.id,
-        "email": user.email,
-        "sync": sync_status,
-    }
+    return RedirectResponse(
+        url=f"{frontend_url}/oauth/callback?status=success"
+    )
