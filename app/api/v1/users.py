@@ -136,9 +136,19 @@ async def recover_password(
         raise HTTPException(status_code=404, detail="The user with this email does not exist in the system.")
 
     token = utils.generate_password_reset_token(email=email)
-    print(f"\n[EMAIL SIMULATION] Password Reset Token for {email}:\n{token}\n")
-    return {"message": "Password recovery email sent (check terminal)"}
 
+    # Send real email
+    from app.services.email_service import send_password_reset_email
+    email_sent = send_password_reset_email(to_email=email, token=token)
+
+    if email_sent:
+        return {"message": "Password recovery email sent. Check your inbox."}
+    else:
+        # Fallback: return token in response (dev mode only)
+        return {
+            "message": "SMTP not configured. Use the token below to reset password.",
+            "token": token,
+        }
 
 # ── M9 — Reset password ──────────────────────────────────────────────
 

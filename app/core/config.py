@@ -21,6 +21,13 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str = ""
     OAUTH_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/google/callback"
 
+    # EMAIL (SMTP)
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    EMAILS_FROM_NAME: str = "Intelligent Academic Planner"
+
     # WEBHOOKS (from System B)
     WEBHOOK_BASE_URL: str = ""
 
