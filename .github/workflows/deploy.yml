@@ -3,7 +3,8 @@ name: Deploy Backend to AWS Elastic Beanstalk
 on:
   push:
     branches:
-      - main  # Make sure this matches your default branch, e.g., 'master' or 'main'
+      - main
+      - backend_v1
 
 jobs:
   deploy:
