@@ -1,0 +1,33 @@
+name: Deploy Backend to AWS Elastic Beanstalk
+
+on:
+  push:
+    branches:
+      - main  # Make sure this matches your default branch, e.g., 'master' or 'main'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v3
+
+      # This creates your .env file in the deployment package directly from your GitHub Secrets
+      - name: Create .env file for backend
+        run: |
+          echo "${{ secrets.BACKEND_ENV }}" > .env
+
+      - name: Generate deployment package
+        run: zip -r deploy.zip . -x '*.git*'
+
+      - name: Deploy to Elastic Beanstalk
+        uses: einaregilsson/beanstalk-deploy@v22
+        with:
+          aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          application_name: IAP_BACKEND
+          environment_name: IAPBACKEND-env
+          version_label: "github-action-${{ github.ref_name }}-${{ github.run_id }}"
+          region: us-east-1 # Change this if your AWS region is different (e.g., ap-south-1)
+          deployment_package: deploy.zip
