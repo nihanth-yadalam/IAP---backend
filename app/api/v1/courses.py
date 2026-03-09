@@ -21,7 +21,7 @@ from app.schemas.courses import CourseCreate, CourseUpdate, CourseResponse
 router = APIRouter()
 
 
-@router.get("", response_model=List[CourseResponse])
+@router.get("/", response_model=List[CourseResponse])
 async def read_courses(
     db: Annotated[AsyncSession, Depends(deps.get_db)],
     current_user: Annotated[User, Depends(deps.get_current_user)],
@@ -39,7 +39,7 @@ async def read_courses(
     return result.scalars().all()
 
 
-@router.post("", response_model=CourseResponse)
+@router.post("/", response_model=CourseResponse)
 async def create_course(
     *,
     db: Annotated[AsyncSession, Depends(deps.get_db)],
