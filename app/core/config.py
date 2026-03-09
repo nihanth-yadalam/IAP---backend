@@ -1,4 +1,4 @@
-﻿from typing import List
+from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import AnyHttpUrl
 
@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     # GOOGLE OAUTH (from System B)
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
-    OAUTH_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/google/callback"
+    OAUTH_REDIRECT_URI: str = ""
 
     # EMAIL (SMTP)
     SMTP_HOST: str = "smtp.gmail.com"
@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
     DEBUG: bool = False
-    FRONTEND_URL: str = "http://localhost:5173"
+    FRONTEND_URL: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",
