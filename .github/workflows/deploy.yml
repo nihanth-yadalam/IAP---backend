@@ -32,5 +32,5 @@ jobs:
           version_label: "github-action-${{ github.ref_name }}-${{ github.run_id }}"
           region: ap-south-1 # Change this if your AWS region is different (e.g., ap-south-1)
           deployment_package: deploy.zip
-
+          use_existing_version_if_available: true
 #comment-ex
