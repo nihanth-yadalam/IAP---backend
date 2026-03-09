@@ -29,7 +29,7 @@ router = APIRouter()
 
 # ── M2 — Register ────────────────────────────────────────────────────
 
-@router.post("", response_model=UserResponse)
+@router.post("/", response_model=UserResponse)
 async def create_user(
     *,
     db: Annotated[AsyncSession, Depends(deps.get_db)],
