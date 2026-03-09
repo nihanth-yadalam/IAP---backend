@@ -191,7 +191,7 @@ async def check_collision(
 
 # ── M17 — List tasks ─────────────────────────────────────────────────
 
-@router.get("/", response_model=List[TaskResponse])
+@router.get("", response_model=List[TaskResponse])
 async def read_tasks(
     db: Annotated[AsyncSession, Depends(deps.get_db)],
     current_user: Annotated[User, Depends(deps.get_current_user)],
@@ -222,7 +222,7 @@ async def read_tasks(
 
 # ── M18 — Create task ────────────────────────────────────────────────
 
-@router.post("/", response_model=TaskResponse)
+@router.post("", response_model=TaskResponse)
 async def create_task(
     *,
     db: Annotated[AsyncSession, Depends(deps.get_db)],

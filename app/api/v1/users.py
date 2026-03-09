@@ -29,7 +29,7 @@ router = APIRouter()
 
 # ── M2 — Register ────────────────────────────────────────────────────
 
-@router.post("/", response_model=UserResponse)
+@router.post("", response_model=UserResponse)
 async def create_user(
     *,
     db: Annotated[AsyncSession, Depends(deps.get_db)],
@@ -172,7 +172,7 @@ async def recover_password(
 
 # ── M9 — Reset password ──────────────────────────────────────────────
 
-@router.post("/reset-password/")
+@router.post("/reset-password")
 async def reset_password(
     db: Annotated[AsyncSession, Depends(deps.get_db)],
     token: str = Body(...),
