@@ -9,12 +9,12 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
 
     # SECURITY
-    SECRET_KEY: str = "change_this_secret_key_to_something_secure"
+    SECRET_KEY: str = ""
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
     # DATABASE (async PostgreSQL)
-    DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost:5432/iap_db"
+    DATABASE_URL: str = ""
 
     # GOOGLE OAUTH (from System B)
     GOOGLE_CLIENT_ID: str = ""
