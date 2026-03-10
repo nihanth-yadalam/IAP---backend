@@ -1,26 +1,23 @@
-from enum import Enum
 from typing import Dict, Any, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
-class Chronotype(str, Enum):
-    morning = "morning"
-    balanced = "balanced"
-    night = "night"
-
-class WorkStyle(str, Enum):
-    deep = "deep"
-    mixed = "mixed"
-    sprints = "sprints"
 
 class OnboardingAnswers(BaseModel):
-    name: str = Field(..., description="Full name of the user")
-    university: str = Field(..., description="University name")
-    major: str = Field(..., description="Major subject")
-    chronotype: Chronotype
-    work_style: WorkStyle
-    preferred_session_mins: int = Field(..., ge=15, le=180, description="Preferred study session length in minutes")
+    """
+    Flexible onboarding questionnaire answers.
+    All fields are optional so the frontend can send any subset.
+    Unknown fields are allowed via extra="allow".
+    """
+    # Profile fields
+    name: Optional[str] = None
+    university: Optional[str] = None
+    major: Optional[str] = None
+
+    # Preference fields (flexible strings — not strict enums)
+    chronotype: Optional[str] = None        # e.g. "morning_lark", "morning", "night_owl", "night"
+    work_style: Optional[str] = None        # e.g. "deep", "mixed", "sprints"
+    study_style: Optional[str] = None       # alias for work_style from some frontends
+    preferred_session_mins: Optional[int] = Field(None, ge=15, le=360)
+    subject_confidences: Optional[Dict[str, Any]] = None  # e.g. {"Math": 7, "Physics": 5}
 
     model_config = ConfigDict(extra="allow")
-
-    # Removed subject_confidences validator as it's no longer in the payload
-
