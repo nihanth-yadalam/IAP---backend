@@ -1,4 +1,4 @@
-﻿"""
+"""
 Merged User + UserProfile models.
 
 System A provided: email, username, password_hash, profile (JSONB onboarding_data).
@@ -8,9 +8,14 @@ Merged: google_refresh_token is nullable (not every user links Google).
 
 from datetime import datetime
 from typing import Optional, Any
-from sqlalchemy import String, Integer, DateTime, ForeignKey
+from sqlalchemy import String, Integer, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import JSONB
+# Use JSONB on PostgreSQL, fall back to standard JSON for SQLite (tests)
+try:
+    from sqlalchemy.dialects.postgresql import JSONB as _JSONB
+    _JSON_TYPE = _JSONB().with_variant(JSON(), "sqlite")
+except ImportError:
+    _JSON_TYPE = JSON()
 from app.db.base import Base
 
 
@@ -53,6 +58,6 @@ class UserProfile(Base):
     university: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     timezone: Mapped[Optional[str]] = mapped_column(String, nullable=True, default="UTC")
     current_archetype: Mapped[str] = mapped_column(String, default="Unclassified")
-    onboarding_data: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    onboarding_data: Mapped[dict[str, Any]] = mapped_column(_JSON_TYPE, default=dict)
 
     user: Mapped["User"] = relationship("User", back_populates="profile")
