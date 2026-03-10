@@ -5,6 +5,7 @@ M18: POST   /tasks/
 M19: PATCH  /tasks/{id}
 M20: DELETE /tasks/{id}
 M21: POST   /tasks/{id}/complete
+M28: POST   /tasks/estimate-duration
 """
 
 from typing import Any, Annotated, List, Optional
@@ -24,11 +25,45 @@ from app.services.google_oauth import GoogleOAuthService
 from app.services.calendar_service import CalendarService
 from app.services.sync_engine import SyncEngine
 from app.services.memory_calculator import get_time_block
+from app.schemas.duration import DurationEstimationRequest, DurationEstimationResponse
+from app.services.duration_estimator import (
+    get_duration_estimation_context,
+    build_duration_estimation_prompt,
+    call_gemini_for_duration,
+)
 
 router = APIRouter()
 
 
-# ── Google Calendar helpers for tasks ─────────────────────────────────
+# ── M28 — AI Duration Estimation ─────────────────────────────────────
+
+@router.post("/estimate-duration", response_model=DurationEstimationResponse)
+async def estimate_duration(
+    *,
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+    request: DurationEstimationRequest,
+) -> Any:
+    """AI-powered duration estimation based on student memory. Read-only, no DB writes."""
+    # 1. Retrieve memory context
+    memory_context = await get_duration_estimation_context(
+        user_id=current_user.id,
+        course_id=request.course_id,
+        db=db,
+    )
+
+    # 2. Build the prompt
+    task_details = {
+        "task_type": request.task_type,
+        "difficulty": request.difficulty,
+        "description": request.description,
+    }
+    prompt = build_duration_estimation_prompt(task_details, memory_context)
+
+    # 3. Call Gemini
+    result = await call_gemini_for_duration(prompt)
+
+    return result
 
 def _calendar_service() -> CalendarService:
     return CalendarService(GoogleOAuthService())
