@@ -1,4 +1,4 @@
-﻿"""
+"""
 Alembic env.py — async migration support for the merged IAP backend.
 """
 
@@ -15,7 +15,7 @@ from app.db.base import Base
 
 # Import all models so Alembic can detect them
 from app.models.user import User, UserProfile  # noqa
-from app.models.task import Course, Task  # noqa
+from app.models.task import Course, Task, TaskLog, ReflexionLog  # noqa
 from app.models.schedule import FixedSlot  # noqa
 from app.models.sync import CalendarSyncState  # noqa
 
