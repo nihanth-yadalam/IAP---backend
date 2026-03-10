@@ -23,11 +23,11 @@ test("Register", "post", f"{base}/users/",
      json={"email": email, "username": username, "password": "pass123"})
 
 # Login
-r = httpx.post(f"{base}/login/access-token",
+r = httpx.post(f"{base}/auth/login/access-token",
                data={"username": email, "password": "pass123"})
 token = r.json().get("access_token", "")
 h = {"Authorization": f"Bearer {token}"}
-test("Login", "post", f"{base}/login/access-token",
+test("Login", "post", f"{base}/auth/login/access-token",
      data={"username": email, "password": "pass123"})
 
 # User endpoints
@@ -41,10 +41,15 @@ test("POST /users/password-recovery", "post",
 test("POST /users/reset-password", "post", f"{base}/users/reset-password/",
      json={"token": "bad", "new_password": "x"})
 
-# Re-login with new password
-r = httpx.post(f"{base}/login/access-token",
-               data={"username": "final@test.com", "password": "pass456"})
-token = r.json()["access_token"]
+# Re-login with new password (use original email, password was changed to pass456)
+r = httpx.post(f"{base}/auth/login/access-token",
+               data={"username": email, "password": "pass456"})
+token = r.json().get("access_token", "")
+if not token:
+    # fallback: re-login with original password in case password change failed
+    r = httpx.post(f"{base}/auth/login/access-token",
+                   data={"username": email, "password": "pass123"})
+    token = r.json().get("access_token", "")
 h = {"Authorization": f"Bearer {token}"}
 
 # Onboarding
@@ -110,7 +115,7 @@ test("POST /sync/initialize (no google)", "post",
      f"{base}/sync/initialize", headers=h)
 
 # Google OAuth
-test("GET /google/authorize", "get", f"{base}/google/authorize", headers=h)
+test("GET /auth/google/authorize", "get", f"{base}/auth/google/authorize", headers=h)
 
 # Webhooks
 test("POST /webhooks/setup (no google)", "post",
