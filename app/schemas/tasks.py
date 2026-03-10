@@ -1,5 +1,5 @@
-from pydantic import BaseModel, ConfigDict, model_validator
-from typing import Optional
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from typing import Optional, Any
 from datetime import datetime
 from app.models.task import PriorityLevel, TaskCategory, TaskStatus
 from app.schemas.courses import CourseInTask
@@ -68,5 +68,31 @@ class TaskResponse(TaskBase):
     created_at: datetime
     google_event_id: Optional[str] = None
     course: Optional[CourseInTask] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ── Task Feedback / Completion ───────────────────────────────────────
+
+
+class TaskFeedbackRequest(BaseModel):
+    actual_duration_mins: int = Field(..., gt=0, description="How long the task actually took (minutes)")
+    drain_intensity: int = Field(..., ge=1, le=10, description="Mental drain 1-10")
+    mood_note: Optional[str] = None
+
+
+class TaskLogResponse(BaseModel):
+    id: int
+    task_id: int
+    user_id: int
+    actual_duration_mins: int
+    drain_intensity: int
+    mood_note: Optional[str] = None
+    completion_time: datetime
+    time_block: str
+    was_on_time: bool
+    delay_mins: int
+    duration_ratio: float
+    ai_feedback_tags: Optional[dict[str, Any]] = None
 
     model_config = ConfigDict(from_attributes=True)
