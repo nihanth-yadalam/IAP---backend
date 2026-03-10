@@ -136,13 +136,13 @@ class TestComputeProcrastinationIndex:
         assert compute_procrastination_index([], 50) == 0.0
 
     def test_zero_session_duration(self):
-        assert compute_procrastination_index([{"completion_time_ts": 1000, "created_at_ts": 0, "actual_duration_mins": 10}], 0) == 0.0
+        assert compute_procrastination_index([{"completion_time_ts": 1000, "scheduled_start_ts": 0, "actual_duration_mins": 10}], 0) == 0.0
 
     def test_no_procrastination(self):
-        # Task created and immediately worked on
+        # Task scheduled and immediately worked on
         logs = [{
-            "completion_time_ts": 3600,  # 60 mins after creation
-            "created_at_ts": 0,
+            "completion_time_ts": 3600,  # 60 mins after schedule
+            "scheduled_start_ts": 0,
             "actual_duration_mins": 60,
         }]
         result = compute_procrastination_index(logs, 50)
@@ -152,7 +152,7 @@ class TestComputeProcrastinationIndex:
         # 60 min total, 30 min actual → 30 min gap
         logs = [{
             "completion_time_ts": 3600,
-            "created_at_ts": 0,
+            "scheduled_start_ts": 0,
             "actual_duration_mins": 30,
         }]
         # gap = 60 - 30 = 30, index = 30/50 = 0.6
@@ -162,11 +162,20 @@ class TestComputeProcrastinationIndex:
     def test_clamped_at_1(self):
         logs = [{
             "completion_time_ts": 36000,  # 600 mins
-            "created_at_ts": 0,
+            "scheduled_start_ts": 0,
             "actual_duration_mins": 30,
         }]
         result = compute_procrastination_index(logs, 50)
         assert result == 1.0
+
+    def test_missing_scheduled_time_ignored(self):
+        logs = [{
+            "completion_time_ts": 36000, 
+            "scheduled_start_ts": None,
+            "actual_duration_mins": 30,
+        }]
+        result = compute_procrastination_index(logs, 50)
+        assert result == 0.0
 
 
 # ── compute_burnout_risk ─────────────────────────────────────────────

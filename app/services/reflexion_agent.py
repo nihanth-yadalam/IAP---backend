@@ -308,9 +308,10 @@ async def run_reflexion_agent(
         preferred_session = global_settings.get("preferred_session_duration_mins", 50)
         proc_data = []
         for log, task in all_logs_30d:
+            scheduled_ts = task.scheduled_start_time.timestamp() if task.scheduled_start_time else None
             proc_data.append({
                 "completion_time_ts": log.completion_time.timestamp(),
-                "created_at_ts": task.created_at.timestamp(),
+                "scheduled_start_ts": scheduled_ts,
                 "actual_duration_mins": log.actual_duration_mins,
             })
 

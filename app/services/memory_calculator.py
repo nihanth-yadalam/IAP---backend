@@ -99,8 +99,9 @@ def compute_procrastination_index(
     Clamped to [0, 1].
 
     Each entry in logs_with_task_data must have keys:
+    Each entry in logs_with_task_data must have keys:
         'completion_time_ts' (float, epoch seconds),
-        'created_at_ts' (float, epoch seconds),
+        'scheduled_start_ts' (float, epoch seconds) OR None,
         'actual_duration_mins' (int)
     """
     if not logs_with_task_data or preferred_session_duration_mins <= 0:
@@ -108,9 +109,17 @@ def compute_procrastination_index(
 
     gaps = []
     for log in logs_with_task_data:
-        total_elapsed_mins = (log["completion_time_ts"] - log["created_at_ts"]) / 60
+        # If no scheduled time, we can't measure procrastination accurately. 
+        # We skip it rather than assuming 0 procrastination.
+        if log.get("scheduled_start_ts") is None:
+            continue
+            
+        total_elapsed_mins = (log["completion_time_ts"] - log["scheduled_start_ts"]) / 60
         gap = total_elapsed_mins - log["actual_duration_mins"]
         gaps.append(max(gap, 0))
+
+    if not gaps:
+        return 0.0
 
     avg_gap = sum(gaps) / len(gaps)
     return _clamp(avg_gap / preferred_session_duration_mins, 0, 1)
