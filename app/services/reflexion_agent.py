@@ -391,10 +391,7 @@ async def run_reflexion_agent(
         consistency = behavioral_signals.get("consistency_score", 0.5)
 
         # Rules in priority order
-        if burnout_risk > 0.5:
-            persona = "The Burnout Risk"
-            confidence = burnout_risk
-        elif peak_block in ["evening", "night"] and morning_score < 0.55:
+        if peak_block in ["evening", "night"] and morning_score < 0.55:
             persona = "The Night Owl"
             confidence = (peak_score - morning_score) / peak_score if peak_score > 0 else 0.0
         elif peak_block == "morning" and evening_score < 0.60:
