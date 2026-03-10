@@ -14,10 +14,13 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import secrets
+import urllib.parse
+
 from app.api import deps
 from app.core import security
 from app.core.config import settings
-from app.models.user import User
+from app.models.user import User, UserProfile
 from app.models.sync import CalendarSyncState
 from app.services.google_oauth import GoogleOAuthService
 from app.services.calendar_service import CalendarService
@@ -63,6 +66,97 @@ async def login_access_token(
         "access_token": security.create_access_token(user.id, expires_delta=access_token_expires),
         "token_type": "bearer",
     }
+
+
+# ── Google Sign-In (no JWT required) ────────────────────────────────
+
+@router.get("/google/login/debug")
+async def google_login_debug() -> dict:
+    """Return the OAuth URL without redirecting — use this to confirm the redirect_uri."""
+    oauth = _oauth_service()
+    auth_url = oauth.get_login_authorization_url(state="google_login")
+    from urllib.parse import urlparse, parse_qs
+    parsed = urlparse(auth_url)
+    params = parse_qs(parsed.query)
+    return {
+        "redirect_uri_sent_to_google": params.get("redirect_uri", [None])[0],
+        "full_authorization_url": auth_url,
+    }
+
+
+@router.get("/google/login")
+async def google_login_start() -> RedirectResponse:
+    """Redirect the browser directly to Google's sign-in consent screen."""
+    oauth = _oauth_service()
+    auth_url = oauth.get_login_authorization_url(state="google_login")
+    return RedirectResponse(url=auth_url)
+
+
+@router.get("/google/login/callback")
+async def google_login_callback(
+    code: str,
+    state: str,
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+) -> RedirectResponse:
+    """
+    Handle Google Sign-In callback.
+    Creates a new account if the email is not yet registered, then issues a JWT
+    and redirects the browser to the frontend with the token as a query param.
+    """
+    frontend_url = settings.FRONTEND_URL.rstrip("/")
+    oauth = _oauth_service()
+
+    try:
+        user_info = oauth.exchange_login_code_for_user_info(code)
+    except Exception as exc:
+        msg = urllib.parse.quote(str(exc))
+        return RedirectResponse(
+            url=f"{frontend_url}/auth/google/callback?status=error&message={msg}"
+        )
+
+    email = user_info.get("email")
+    name = user_info.get("name", "")
+
+    if not email:
+        return RedirectResponse(
+            url=f"{frontend_url}/auth/google/callback?status=error&message=No+email+returned+from+Google"
+        )
+
+    # Find or create the user
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalars().first()
+
+    if not user:
+        # Derive a unique username from the email local-part
+        base = email.split("@")[0]
+        username, suffix = base, 1
+        while True:
+            taken = await db.execute(select(User).where(User.username == username))
+            if not taken.scalars().first():
+                break
+            username = f"{base}{suffix}"
+            suffix += 1
+
+        user = User(
+            email=email,
+            username=username,
+            # Google-authenticated users have no usable password
+            password_hash=security.get_password_hash(secrets.token_urlsafe(32)),
+        )
+        db.add(user)
+        await db.flush()  # populate user.id
+
+        profile = UserProfile(user_id=user.id, full_name=name)
+        db.add(profile)
+        await db.commit()
+        await db.refresh(user)
+
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    token = security.create_access_token(user.id, expires_delta=access_token_expires)
+
+    return RedirectResponse(
+        url=f"{frontend_url}/auth/google/callback?status=success&token={urllib.parse.quote(token)}"
+    )
 
 
 # ── M3 — Google authorize ────────────────────────────────────────────
@@ -115,7 +209,6 @@ async def google_callback(
     try:
         tokens = oauth.exchange_code_for_tokens(code)
     except Exception as e:
-        import urllib.parse
         msg = urllib.parse.quote(str(e))
         return RedirectResponse(
             url=f"{frontend_url}/oauth/callback?status=error&message={msg}"
