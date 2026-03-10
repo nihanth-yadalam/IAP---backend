@@ -14,6 +14,7 @@ from app.api import deps
 from app.models.user import User
 from app.models.schedule import FixedSlot
 from app.schemas.onboarding import OnboardingAnswers
+from app.services.memory_utils import initialize_memory
 
 router = APIRouter()
 
@@ -71,5 +72,20 @@ async def submit_questionnaire(
     db.add(profile)
     await db.commit()
     await db.refresh(profile)
+
+    # Initialize AI memory structure in onboarding_data JSONB
+    # Map chronotype to memory format
+    chrono_map = {"morning": "early_bird", "night": "night_owl", "balanced": "balanced"}
+    chronotype = chrono_map.get(answers.chronotype.value, "balanced")
+    preferred_session_mins = answers.preferred_session_mins
+
+    await initialize_memory(
+        db=db,
+        user_id=current_user.id,
+        chronotype=chronotype,
+        base_energy_level=7,  # default; not asked during onboarding
+        preferred_session_duration_mins=preferred_session_mins,
+    )
+    await db.commit()
 
     return {"message": "Onboarding questionnaire saved successfully", "step": "schedule"}
