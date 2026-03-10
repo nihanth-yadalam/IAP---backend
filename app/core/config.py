@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
     OAUTH_REDIRECT_URI: str = ""
+    GOOGLE_LOGIN_REDIRECT_URI: str = ""
 
     # EMAIL (SMTP)
     SMTP_HOST: str = "smtp.gmail.com"
