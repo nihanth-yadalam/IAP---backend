@@ -33,38 +33,48 @@ class GoogleOAuthService:
         }
 
     def get_authorization_url(self, state: str = "random_state") -> str:
-        flow = Flow.from_client_config(
-            self.client_config,
-            scopes=self.SCOPES,
-            redirect_uri=self.client_config["web"]["redirect_uris"][0],
-        )
-        auth_url, _ = flow.authorization_url(
-            access_type="offline",
-            prompt="consent",
-            state=state,
-            code_verifier=None,
-        )
-        return auth_url
+        from urllib.parse import urlencode
+
+        params = {
+            "client_id": settings.GOOGLE_CLIENT_ID,
+            "redirect_uri": self.client_config["web"]["redirect_uris"][0],
+            "response_type": "code",
+            "scope": " ".join(self.SCOPES),
+            "access_type": "offline",
+            "prompt": "consent",
+            "state": state,
+        }
+        return f"https://accounts.google.com/o/oauth2/auth?{urlencode(params)}"
 
     def exchange_code_for_tokens(self, code: str) -> dict:
-        flow = Flow.from_client_config(
-            self.client_config,
-            scopes=self.SCOPES,
-            redirect_uri=self.client_config["web"]["redirect_uris"][0],
+        import requests as _requests
+
+        # Direct token exchange — no PKCE, no Flow class
+        resp = _requests.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "code": code,
+                "client_id": settings.GOOGLE_CLIENT_ID,
+                "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                "redirect_uri": self.client_config["web"]["redirect_uris"][0],
+                "grant_type": "authorization_code",
+            },
+            timeout=10,
         )
-        flow.fetch_token(code=code, code_verifier=None)
-        credentials = flow.credentials
+        resp.raise_for_status()
+        tokens = resp.json()
 
         # Get user email from Google Calendar
         from googleapiclient.discovery import build
 
-        service = build("calendar", "v3", credentials=credentials)
+        creds = Credentials(token=tokens["access_token"])
+        service = build("calendar", "v3", credentials=creds)
         calendar = service.calendars().get(calendarId="primary").execute()
         email = calendar.get("id", "unknown@example.com")
 
         return {
-            "refresh_token": credentials.refresh_token,
-            "access_token": credentials.token,
+            "refresh_token": tokens.get("refresh_token"),
+            "access_token": tokens["access_token"],
             "email": email,
         }
 
