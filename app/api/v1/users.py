@@ -6,17 +6,22 @@ M6:  PUT  /users/me/profile    — update profile
 M7:  POST /users/me/password   — change password
 M8:  POST /users/password-recovery/{email}
 M9:  POST /users/reset-password/
+M22: GET  /users/me/memory
+M23: GET  /users/me/memory/summaries
+M24: POST /users/me/memory/rules
+M25: POST /users/me/reflexion/trigger
 """
 
-from typing import Any, Annotated
+from typing import Any, Annotated, List
 
-from fastapi import APIRouter, Body, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
 from app.core import security, utils
 from app.models.user import User, UserProfile
+from app.models.task import ReflexionLog
 from app.schemas.user import (
     UserCreate,
     UserResponse,
@@ -193,3 +198,89 @@ async def reset_password(
     db.add(user)
     await db.commit()
     return {"message": "Password updated successfully"}
+
+
+# ── M22 — Get AI memory ──────────────────────────────────────────────
+
+@router.get("/me/memory")
+async def get_user_memory(
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+) -> Any:
+    """Returns the full memory JSONB for the authenticated user."""
+    profile = current_user.profile
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return profile.onboarding_data or {}
+
+
+# ── M23 — Get recent reflexion summaries ─────────────────────────────
+
+@router.get("/me/memory/summaries")
+async def get_memory_summaries(
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+) -> Any:
+    """Returns the 5 most recent reflexion log rows for insights section."""
+    result = await db.execute(
+        select(ReflexionLog)
+        .where(ReflexionLog.user_id == current_user.id)
+        .order_by(ReflexionLog.generated_at.desc())
+        .limit(5)
+    )
+    logs = result.scalars().all()
+    return [
+        {
+            "id": log.id,
+            "generated_at": log.generated_at.isoformat(),
+            "summary_text": log.summary_text,
+            "updated_traits": log.updated_traits,
+            "reflexion_trigger": log.reflexion_trigger,
+        }
+        for log in logs
+    ]
+
+
+# ── M24 — Add manual rule to generic memory ─────────────────────────
+
+@router.post("/me/memory/rules")
+async def add_memory_rule(
+    *,
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+    rule: str = Body(..., embed=True),
+) -> Any:
+    """Appends a text rule to manual_rules in generic memory."""
+    import json
+
+    await db.execute(
+        text(
+            """
+            UPDATE user_profiles
+            SET onboarding_data = jsonb_set(
+                COALESCE(onboarding_data, '{}'::jsonb),
+                '{manual_rules}',
+                COALESCE(onboarding_data->'manual_rules', '[]'::jsonb) || :rule_json::jsonb,
+                true
+            )
+            WHERE user_id = :user_id
+            """
+        ),
+        {"user_id": current_user.id, "rule_json": json.dumps(rule)},
+    )
+    await db.commit()
+    return {"message": "Rule added successfully", "rule": rule}
+
+
+# ── M25 — Manually trigger reflexion ─────────────────────────────────
+
+@router.post("/me/reflexion/trigger")
+async def trigger_reflexion(
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+    background_tasks: BackgroundTasks,
+) -> Any:
+    """Manually trigger reflexion agent for the current user."""
+    from app.services.reflexion_agent import run_reflexion_agent
+
+    background_tasks.add_task(run_reflexion_agent, current_user.id, db, "manual")
+    return {"message": "Reflexion triggered. Results will be available shortly."}

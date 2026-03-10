@@ -4,24 +4,26 @@ M17: GET    /tasks/
 M18: POST   /tasks/
 M19: PATCH  /tasks/{id}
 M20: DELETE /tasks/{id}
+M21: POST   /tasks/{id}/complete
 """
 
 from typing import Any, Annotated, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import select, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api import deps
 from app.models.user import User
-from app.models.task import Task, Course, TaskStatus
+from app.models.task import Task, TaskLog, Course, TaskStatus
 from app.models.schedule import FixedSlot
-from app.schemas.tasks import TaskCreate, TaskUpdate, TaskResponse
+from app.schemas.tasks import TaskCreate, TaskUpdate, TaskResponse, TaskFeedbackRequest, TaskLogResponse
 from app.services.google_oauth import GoogleOAuthService
 from app.services.calendar_service import CalendarService
 from app.services.sync_engine import SyncEngine
+from app.services.memory_calculator import get_time_block
 
 router = APIRouter()
 
@@ -333,4 +335,89 @@ async def delete_task(
     await db.delete(task)
     await db.commit()
     return {"message": "Task deleted successfully"}
+
+
+# ── M21 — Complete task (feedback endpoint) ──────────────────────────
+
+@router.post("/{task_id}/complete", response_model=TaskLogResponse)
+async def complete_task(
+    *,
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+    task_id: int,
+    feedback: TaskFeedbackRequest,
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+    background_tasks: BackgroundTasks,
+) -> Any:
+    """
+    Mark a task as completed with user feedback.
+    Calculates derived fields server-side and triggers reflexion check in background.
+    """
+    # 1. Verify task exists
+    result = await db.execute(select(Task).where(Task.id == task_id))
+    task = result.scalars().first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # 2. Verify ownership
+    if task.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to complete this task")
+
+    # 3. Verify not already completed
+    if task.status == TaskStatus.Completed:
+        raise HTTPException(status_code=400, detail="Task is already completed")
+
+    # 4. Set completion time
+    completion_time = datetime.now(timezone.utc)
+
+    # 5. Derive computed fields
+    time_block = get_time_block(completion_time.hour)
+
+    if task.deadline:
+        was_on_time = completion_time <= task.deadline
+        if not was_on_time:
+            delay_mins = int((completion_time - task.deadline).total_seconds() / 60)
+        else:
+            delay_mins = 0
+    else:
+        was_on_time = True
+        delay_mins = 0
+
+    if task.estimated_duration_mins and task.estimated_duration_mins > 0:
+        duration_ratio = feedback.actual_duration_mins / task.estimated_duration_mins
+    else:
+        duration_ratio = 1.0
+
+    # 6. Update task status to Completed
+    task.status = TaskStatus.Completed
+    db.add(task)
+
+    # 7. Create task log
+    task_log = TaskLog(
+        task_id=task.id,
+        user_id=current_user.id,
+        actual_duration_mins=feedback.actual_duration_mins,
+        drain_intensity=feedback.drain_intensity,
+        mood_note=feedback.mood_note,
+        completion_time=completion_time,
+        time_block=time_block,
+        was_on_time=was_on_time,
+        delay_mins=delay_mins,
+        duration_ratio=duration_ratio,
+        ai_feedback_tags=None,
+    )
+    db.add(task_log)
+    await db.commit()
+    await db.refresh(task_log)
+
+    # 8. Delete from Google Calendar if linked
+    if task.google_event_id:
+        await _delete_task_from_google(current_user, task.google_event_id)
+        task.google_event_id = None
+        await db.commit()
+
+    # 9. Trigger reflexion check in background (non-blocking)
+    from app.services.reflexion_agent import check_reflexion_triggers
+    background_tasks.add_task(check_reflexion_triggers, current_user.id)
+
+    return task_log
 
