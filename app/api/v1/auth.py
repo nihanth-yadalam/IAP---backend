@@ -25,8 +25,13 @@ from app.models.sync import CalendarSyncState
 from app.services.google_oauth import GoogleOAuthService
 from app.services.calendar_service import CalendarService
 from app.services.sync_engine import SyncEngine
+from app.services.email_service import send_login_confirmation_email, send_otp_email
 
 router = APIRouter()
+
+# ── OTP store: {email: {"otp": str, "username": str, "expires_at": datetime}} ──
+import datetime as _dt
+_otp_store: dict[str, dict] = {}
 
 # ── Shared service factories ─────────────────────────────────────────
 
@@ -61,9 +66,46 @@ async def login_access_token(
     if not user or not security.verify_password(form_data.password, user.password_hash):
         raise HTTPException(status_code=400, detail="Incorrect email or password")
 
+    # Generate a 6-digit OTP, store with 10-minute expiry, send via email
+    otp = f"{secrets.randbelow(1000000):06d}"
+    _otp_store[user.email] = {
+        "otp": otp,
+        "username": user.username,
+        "user_id": user.id,
+        "expires_at": _dt.datetime.utcnow() + _dt.timedelta(minutes=10),
+    }
+    send_otp_email(user.email, user.username, otp)
+
+    return {"status": "otp_pending", "email": user.email}
+
+
+@router.post("/login/verify-otp")
+async def verify_login_otp(
+    payload: dict,
+) -> Any:
+    """Verify the OTP sent to the user's email and return a JWT on success."""
+    email: str = payload.get("email", "").strip().lower()
+    otp: str = str(payload.get("otp", "")).strip()
+
+    entry = _otp_store.get(email)
+    if not entry:
+        raise HTTPException(status_code=400, detail="No pending OTP for this email. Please log in again.")
+
+    if _dt.datetime.utcnow() > entry["expires_at"]:
+        _otp_store.pop(email, None)
+        raise HTTPException(status_code=400, detail="OTP has expired. Please log in again.")
+
+    if not secrets.compare_digest(entry["otp"], otp):
+        raise HTTPException(status_code=400, detail="Incorrect OTP.")
+
+    _otp_store.pop(email, None)  # single-use
+
+    # Send login confirmation notification now that login is complete
+    send_login_confirmation_email(email, entry["username"])
+
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     return {
-        "access_token": security.create_access_token(user.id, expires_delta=access_token_expires),
+        "access_token": security.create_access_token(entry["user_id"], expires_delta=access_token_expires),
         "token_type": "bearer",
     }
 

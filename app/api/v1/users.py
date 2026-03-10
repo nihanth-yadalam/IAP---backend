@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api import deps
 from app.core import security, utils
 from app.models.user import User, UserProfile
+from app.services.email_service import send_signup_confirmation_email
 from app.schemas.user import (
     UserCreate,
     UserResponse,
@@ -58,6 +59,8 @@ async def create_user(
     db.add(profile)
     await db.commit()
     await db.refresh(user, attribute_names=["profile"])
+
+    send_signup_confirmation_email(user.email, user.username)
 
     return user
 
