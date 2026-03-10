@@ -27,6 +27,7 @@ from app.schemas.user import (
     UserResponse,
     UserProfileBase,
     UserUpdatePassword,
+    GlobalMemorySettingsUpdate,
 )
 
 router = APIRouter()
@@ -271,7 +272,115 @@ async def add_memory_rule(
     return {"message": "Rule added successfully", "rule": rule}
 
 
-# ── M25 — Manually trigger reflexion ─────────────────────────────────
+@router.put("/me/memory/rules/{index}")
+async def update_memory_rule(
+    *,
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+    index: int,
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+    rule: str = Body(..., embed=True),
+) -> Any:
+    """Updates a text rule at a specific index in manual_rules."""
+    import json
+    from sqlalchemy import text
+
+    # We use jsonb_set with a path array constructed directly in SQL
+    # using the element index. Note: Postgres jsonb arrays are 0-indexed.
+    await db.execute(
+        text(
+            """
+            UPDATE user_profiles
+            SET onboarding_data = jsonb_set(
+                onboarding_data,
+                ARRAY['manual_rules', :index_str],
+                :rule_json::jsonb,
+                false
+            )
+            WHERE user_id = :user_id 
+              AND jsonb_array_length(onboarding_data->'manual_rules') > :index
+            """
+        ),
+        {
+            "user_id": current_user.id, 
+            "index_str": str(index), 
+            "index": index,
+            "rule_json": json.dumps(rule)
+        },
+    )
+    await db.commit()
+    return {"message": "Rule updated successfully", "index": index, "rule": rule}
+
+
+@router.delete("/me/memory/rules/{index}")
+async def delete_memory_rule(
+    *,
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+    index: int,
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+) -> Any:
+    """Deletes a text rule at a specific index in manual_rules."""
+    from sqlalchemy import text
+
+    # The minus operator removes an element from a jsonb array by index
+    await db.execute(
+        text(
+            """
+            UPDATE user_profiles
+            SET onboarding_data = onboarding_data #- ARRAY['manual_rules', :index_str]
+            WHERE user_id = :user_id
+              AND jsonb_array_length(onboarding_data->'manual_rules') > :index
+            """
+        ),
+        {
+            "user_id": current_user.id, 
+            "index_str": str(index), 
+            "index": index
+        },
+    )
+    await db.commit()
+    return {"message": "Rule deleted successfully", "index": index}
+
+
+# ── M25 — Update memory settings (global) ───────────────────────────
+
+@router.put("/me/memory/settings")
+async def update_memory_settings(
+    *,
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+    settings: GlobalMemorySettingsUpdate,
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+) -> Any:
+    """Update global AI memory settings (chronotype, base energy, etc)."""
+    import json
+    from sqlalchemy import text
+
+    updates = settings.model_dump(exclude_unset=True)
+    if not updates:
+        return {"message": "No settings to update"}
+
+    # Dynamically build the jsonb_set string because the key is dynamic
+    # Or just execute one by one
+    for key, val in updates.items():
+        await db.execute(
+            text(
+                f"""
+                UPDATE user_profiles
+                SET onboarding_data = jsonb_set(
+                    COALESCE(onboarding_data, '{{}}'::jsonb),
+                    '{{global_settings, {key}}}',
+                    :val_json::jsonb,
+                    true
+                )
+                WHERE user_id = :user_id
+                """
+            ),
+            {"user_id": current_user.id, "val_json": json.dumps(val)}
+        )
+    await db.commit()
+    return {"message": "Memory settings updated successfully"}
+
+
+# ── M26 — Manually trigger reflexion ─────────────────────────────────
 
 @router.post("/me/reflexion/trigger")
 async def trigger_reflexion(
