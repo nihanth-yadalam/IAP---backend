@@ -1,4 +1,4 @@
-﻿from typing import List
+from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import AnyHttpUrl
 
@@ -30,6 +30,9 @@ class Settings(BaseSettings):
 
     # WEBHOOKS (from System B)
     WEBHOOK_BASE_URL: str = ""
+
+    # GEMINI AI (for reflexion agent summaries)
+    GEMINI_API_KEY: str = ""
 
     # SERVER
     API_HOST: str = "0.0.0.0"
