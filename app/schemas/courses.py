@@ -2,6 +2,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 
 
+class CourseMemoryUpdate(BaseModel):
+    confidence_score: Optional[int] = Field(None, ge=1, le=10)
+    drain_rate: Optional[int] = Field(None, ge=1, le=10)
+
+
 class CourseBase(BaseModel):
     name: str
     code: Optional[str] = None
