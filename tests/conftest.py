@@ -100,7 +100,7 @@ async def normal_user_token_headers(async_client: AsyncClient, db_session: Async
         "username": email,
         "password": password
     }
-    r = await async_client.post(f"{settings.API_V1_STR}/login/access-token", data=login_data)
+    r = await async_client.post(f"{settings.API_V1_STR}/auth/login/access-token", data=login_data)
     tokens = r.json()
     a_token = tokens["access_token"]
     headers = {"Authorization": f"Bearer {a_token}"}

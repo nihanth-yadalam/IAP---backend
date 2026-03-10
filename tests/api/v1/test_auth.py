@@ -25,7 +25,7 @@ async def test_login_access_token(async_client: AsyncClient, db_session):
         "password": password
     }
     
-    response = await async_client.post(f"{settings.API_V1_STR}/login/access-token", data=login_data)
+    response = await async_client.post(f"{settings.API_V1_STR}/auth/login/access-token", data=login_data)
     assert response.status_code == 200
     tokens = response.json()
     assert "access_token" in tokens
@@ -53,5 +53,5 @@ async def test_login_wrong_password(async_client: AsyncClient, db_session):
         "password": "wrongpassword"
     }
     
-    response = await async_client.post(f"{settings.API_V1_STR}/login/access-token", data=login_data)
+    response = await async_client.post(f"{settings.API_V1_STR}/auth/login/access-token", data=login_data)
     assert response.status_code == 400
