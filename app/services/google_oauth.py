@@ -42,6 +42,7 @@ class GoogleOAuthService:
             access_type="offline",
             prompt="consent",
             state=state,
+            code_verifier=None,
         )
         return auth_url
 
@@ -51,7 +52,7 @@ class GoogleOAuthService:
             scopes=self.SCOPES,
             redirect_uri=self.client_config["web"]["redirect_uris"][0],
         )
-        flow.fetch_token(code=code)
+        flow.fetch_token(code=code, code_verifier=None)
         credentials = flow.credentials
 
         # Get user email from Google Calendar
@@ -78,6 +79,7 @@ class GoogleOAuthService:
             access_type="offline",
             prompt="select_account",
             state=state,
+            code_verifier=None,
         )
         return auth_url
 
@@ -90,7 +92,7 @@ class GoogleOAuthService:
             scopes=self.LOGIN_SCOPES,
             redirect_uri=settings.GOOGLE_LOGIN_REDIRECT_URI,
         )
-        flow.fetch_token(code=code)
+        flow.fetch_token(code=code, code_verifier=None)
         credentials = flow.credentials
 
         resp = _requests.get(
