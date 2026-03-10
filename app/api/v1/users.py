@@ -172,7 +172,7 @@ async def recover_password(
 
 # ── M9 — Reset password ──────────────────────────────────────────────
 
-@router.post("/reset-password/")
+@router.post("/reset-password")
 async def reset_password(
     db: Annotated[AsyncSession, Depends(deps.get_db)],
     token: str = Body(...),
