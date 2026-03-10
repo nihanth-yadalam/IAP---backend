@@ -3,16 +3,17 @@ Background scheduler — from System B, adapted for async.
 Periodically:
   1. Renew expiring Google Calendar webhook channels.
   2. Run incremental sync for all users with valid tokens.
+  3. Run reflexion sweep for users needing reflexion updates.
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from sqlalchemy import select
+from sqlalchemy import select, or_
 
 from app.db.session import async_session
-from app.models.user import User
+from app.models.user import User, UserProfile
 from app.models.sync import CalendarSyncState
 from app.core.config import settings
 from app.services.google_oauth import GoogleOAuthService
@@ -98,6 +99,43 @@ async def periodic_sync():
                 print(f"[Scheduler] Sync failed for user {user.id}: {e}")
 
 
+# ── Scheduled reflexion sweep ────────────────────────────────────────
+
+async def scheduled_reflexion_sweep():
+    """
+    Run reflexion agent for users who need it.
+    Queries users where last_reflexion_at IS NULL or last_reflexion_at < NOW() - 3 days.
+    Processes users sequentially to avoid DB overload.
+    """
+    from app.services.reflexion_agent import run_reflexion_agent
+
+    async with async_session() as db:
+        threshold = datetime.now(timezone.utc) - timedelta(days=3)
+
+        result = await db.execute(
+            select(UserProfile.user_id).where(
+                or_(
+                    UserProfile.last_reflexion_at == None,
+                    UserProfile.last_reflexion_at < threshold,
+                )
+            )
+        )
+        user_ids = [row[0] for row in result.all()]
+
+        if not user_ids:
+            print("[Scheduler] Reflexion sweep: no users need reflexion.")
+            return
+
+        print(f"[Scheduler] Reflexion sweep starting for {len(user_ids)} users.")
+        for uid in user_ids:
+            try:
+                await run_reflexion_agent(uid, db, trigger="scheduled")
+                print(f"[Scheduler] Reflexion complete for user {uid}")
+            except Exception as e:
+                print(f"[Scheduler] Reflexion failed for user {uid}: {e}")
+        print("[Scheduler] Reflexion sweep complete.")
+
+
 # ── Scheduler setup ──────────────────────────────────────────────────
 
 scheduler = AsyncIOScheduler()
@@ -109,6 +147,8 @@ def start_scheduler():
     scheduler.add_job(renew_webhooks, "interval", hours=12, id="renew_webhooks")
     # Periodic sync every 15 minutes
     scheduler.add_job(periodic_sync, "interval", minutes=15, id="periodic_sync")
+    # Reflexion sweep every 3 days
+    scheduler.add_job(scheduled_reflexion_sweep, "interval", days=3, id="reflexion_sweep")
     scheduler.start()
     print("[Scheduler] Background scheduler started.")
 
