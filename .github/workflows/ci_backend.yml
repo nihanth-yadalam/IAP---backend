@@ -2,7 +2,7 @@ name: IAP Backend CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, backend_v1]
   pull_request:
     branches: [main]
 
@@ -32,6 +32,15 @@ jobs:
 
       - name: Create .env file from secret
         run: echo "$BACKEND_ENV" > .env
+
+      - name: Run unit tests
+        env:
+          PYTHONPATH: "."
+        run: |
+          pytest tests/core/test_security.py \
+                 tests/core/test_timezone.py \
+                 tests/services/test_calendar.py \
+                 --noconftest -v --tb=short
 
       - name: Start server (smoke test)
         run: |
