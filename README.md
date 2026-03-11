@@ -311,7 +311,23 @@ Two methods for importing changes:
 
 ---
 
-## 📧 Email Configuration
+## � Timezone Policy
+
+All datetime values are **stored and transmitted in UTC**. Conversion to a user's local timezone happens only at display boundaries.
+
+| Concern | Rule |
+|---|---|
+| **Database columns** | Always UTC (`datetime with time zone`) |
+| **Google Calendar events** | Sent as UTC with `"timeZone": "UTC"` |
+| **Sync engine** | `_parse_datetime()` normalizes incoming events to UTC |
+| **Collision checks** | Convert to user's local zone only for comparison |
+| **Frontend** | Auto-detects IANA timezone, sends via `PUT /me/timezone` |
+
+Central helpers live in `app/core/timezone.py`: `to_utc()`, `from_utc()`, `validate_timezone()`, `safe_zone()`, `utc_iso()`.
+
+---
+
+## �📧 Email Configuration
 
 For password recovery functionality, configure SMTP settings:
 

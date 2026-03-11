@@ -10,6 +10,7 @@ import traceback
 from datetime import datetime, timedelta
 import uuid
 
+from app.core.timezone import to_utc, utc_iso
 from app.services.google_oauth import GoogleOAuthService
 
 
@@ -23,17 +24,7 @@ class CalendarService:
         creds = self.oauth_service.get_valid_credentials(refresh_token)
         service = build("calendar", "v3", credentials=creds)
 
-        event_body = {
-            "summary": slot_data["title"],
-            "start": {
-                "dateTime": slot_data["google_start_datetime"].isoformat(),
-                "timeZone": "UTC",
-            },
-            "end": {
-                "dateTime": slot_data["google_end_datetime"].isoformat(),
-                "timeZone": "UTC",
-            },
-        }
+        event_body = self._build_event_body(slot_data)
         event = service.events().insert(calendarId=calendar_id, body=event_body).execute()
         return event["id"]
 
@@ -41,20 +32,22 @@ class CalendarService:
         creds = self.oauth_service.get_valid_credentials(refresh_token)
         service = build("calendar", "v3", credentials=creds)
 
-        event_body = {
-            "summary": slot_data["title"],
-            "start": {
-                "dateTime": slot_data["google_start_datetime"].isoformat(),
-                "timeZone": "UTC",
-            },
-            "end": {
-                "dateTime": slot_data["google_end_datetime"].isoformat(),
-                "timeZone": "UTC",
-            },
-        }
+        event_body = self._build_event_body(slot_data)
         service.events().update(
             calendarId=calendar_id, eventId=google_event_id, body=event_body
         ).execute()
+
+    @staticmethod
+    def _build_event_body(slot_data: dict) -> dict:
+        """Build a Google Calendar event body with UTC-normalized datetimes."""
+        start_utc = to_utc(slot_data["google_start_datetime"])
+        end_utc = to_utc(slot_data["google_end_datetime"])
+        print(f"[calendar] Sending to Google: start={start_utc.isoformat()} end={end_utc.isoformat()} (UTC)")
+        return {
+            "summary": slot_data["title"],
+            "start": {"dateTime": start_utc.isoformat(), "timeZone": "UTC"},
+            "end": {"dateTime": end_utc.isoformat(), "timeZone": "UTC"},
+        }
 
     def delete_event(self, refresh_token: str, calendar_id: str, google_event_id: str):
         if not google_event_id:

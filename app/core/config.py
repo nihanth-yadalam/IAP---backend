@@ -9,17 +9,18 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
 
     # SECURITY
-    SECRET_KEY: str = "change_this_secret_key_to_something_secure"
+    SECRET_KEY: str = ""
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
     # DATABASE (async PostgreSQL)
-    DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost:5432/iap_db"
+    DATABASE_URL: str = ""
 
     # GOOGLE OAUTH (from System B)
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
-    OAUTH_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/google/callback"
+    OAUTH_REDIRECT_URI: str = ""
+    GOOGLE_LOGIN_REDIRECT_URI: str = ""
 
     # EMAIL (SMTP)
     SMTP_HOST: str = "smtp.gmail.com"
@@ -38,7 +39,7 @@ class Settings(BaseSettings):
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
     DEBUG: bool = False
-    FRONTEND_URL: str = "http://localhost:5173"
+    FRONTEND_URL: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

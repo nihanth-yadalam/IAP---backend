@@ -62,15 +62,13 @@ def test_list_events(calendar_service):
         mock_service = MagicMock()
         mock_events = MagicMock()
         mock_list = MagicMock()
-        mock_execute = MagicMock()
         
         mock_build.return_value = mock_service
         mock_service.events.return_value = mock_events
         mock_events.list.return_value = mock_list
-        mock_list.execute.return_value = mock_execute
         
-        # Mock response with one page of items
-        mock_execute.return_value = {
+        # execute() must return the dict directly (not a MagicMock wrapper)
+        mock_list.execute.return_value = {
             "items": [{"id": "ev1", "summary": "Event 1"}],
             "nextPageToken": None,
             "nextSyncToken": "sync_token_123"

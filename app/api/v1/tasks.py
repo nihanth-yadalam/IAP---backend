@@ -352,18 +352,15 @@ async def check_collision(
     # Fixed-slot (recurring) collision — weekly fields
     # Convert UTC task times to user's local timezone before comparing
     # because recurring slots store times in the user's local timezone
-    from zoneinfo import ZoneInfo
+    from app.core.timezone import from_utc, safe_zone
     user_tz_name = "UTC"  # fallback
     if current_user and current_user.profile and current_user.profile.timezone:
         user_tz_name = current_user.profile.timezone
-    try:
-        user_tz = ZoneInfo(user_tz_name)
-    except Exception:
-        user_tz = ZoneInfo("UTC")
+    user_tz = safe_zone(user_tz_name)
 
     # Convert to user's local timezone
-    local_start = start_time.astimezone(user_tz) if start_time.tzinfo else start_time
-    local_end = end_time.astimezone(user_tz) if end_time.tzinfo else end_time
+    local_start = from_utc(start_time, user_tz_name)
+    local_end = from_utc(end_time, user_tz_name)
     day_name = local_start.strftime("%A")
     t_start = local_start.time().replace(tzinfo=None)
     t_end = local_end.time().replace(tzinfo=None)

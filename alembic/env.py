@@ -14,7 +14,7 @@ from app.core.config import settings
 from app.db.base import Base
 
 # Import all models so Alembic can detect them
-from app.models.user import User, UserProfile  # noqa
+from app.models.user import User, UserProfile, OTPCode  # noqa
 from app.models.task import Course, Task, TaskLog, ReflexionLog  # noqa
 from app.models.schedule import FixedSlot  # noqa
 from app.models.sync import CalendarSyncState  # noqa

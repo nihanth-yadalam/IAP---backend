@@ -11,12 +11,16 @@ from datetime import datetime, timedelta
 from dateutil import parser as date_parser
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from zoneinfo import ZoneInfo
 
+from app.core.timezone import to_utc
 from app.models.schedule import FixedSlot
 from app.models.sync import CalendarSyncState
 from app.models.user import User
 from app.services.google_oauth import GoogleOAuthService
 from app.services.calendar_service import CalendarService
+
+_UTC = ZoneInfo("UTC")
 
 
 class SyncEngine:
@@ -45,14 +49,10 @@ class SyncEngine:
 
         try:
             if not slot.is_google_event:
-                # Create new event
+                # Create new event — normalize to UTC before sending
                 google_event_id = self.calendar_service.create_event(
                     refresh_token, calendar_id,
-                    {
-                        "title": slot.title,
-                        "google_start_datetime": slot.google_start_datetime,
-                        "google_end_datetime": slot.google_end_datetime,
-                    },
+                    self._slot_data_utc(slot),
                 )
                 slot.google_event_id = google_event_id
                 slot.is_google_event = True
@@ -74,21 +74,13 @@ class SyncEngine:
                     try:
                         self.calendar_service.update_event(
                             refresh_token, calendar_id, slot.google_event_id,
-                            {
-                                "title": slot.title,
-                                "google_start_datetime": slot.google_start_datetime,
-                                "google_end_datetime": slot.google_end_datetime,
-                            },
+                            self._slot_data_utc(slot),
                         )
                     except HttpError as e:
                         if getattr(getattr(e, "resp", None), "status", None) == 410:
                             new_id = self.calendar_service.create_event(
                                 refresh_token, calendar_id,
-                                {
-                                    "title": slot.title,
-                                    "google_start_datetime": slot.google_start_datetime,
-                                    "google_end_datetime": slot.google_end_datetime,
-                                },
+                                self._slot_data_utc(slot),
                             )
                             slot.google_event_id = new_id
                             slot.is_google_event = True
@@ -255,12 +247,24 @@ class SyncEngine:
         title_match = slot.title == event_data["title"]
         return start_match and end_match and title_match
 
+    @staticmethod
+    def _slot_data_utc(slot: FixedSlot) -> dict:
+        """Build slot_data dict with datetimes normalized to UTC."""
+        return {
+            "title": slot.title,
+            "google_start_datetime": to_utc(slot.google_start_datetime),
+            "google_end_datetime": to_utc(slot.google_end_datetime),
+        }
+
     def _parse_datetime(self, dt_dict: dict) -> datetime:
+        """Parse a Google event start/end dict and normalize to UTC."""
         if "dateTime" in dt_dict:
-            return date_parser.parse(dt_dict["dateTime"])
+            parsed = date_parser.parse(dt_dict["dateTime"])
+            return to_utc(parsed)
         elif "date" in dt_dict:
-            return datetime.fromisoformat(dt_dict["date"])
-        return datetime.utcnow()
+            # All-day event — return midnight UTC (naive would break tz-aware columns)
+            return datetime.fromisoformat(dt_dict["date"]).replace(tzinfo=_UTC)
+        return datetime.now(_UTC)
 
     async def _full_resync(self, db: AsyncSession, user_id: int):
         await self._update_sync_token(db, user_id, None)

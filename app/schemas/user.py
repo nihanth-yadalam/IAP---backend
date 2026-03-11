@@ -44,6 +44,7 @@ class UserProfileBase(BaseModel):
 
 class UserResponse(UserBase):
     id: int
+    email_confirmed: bool = False
     google_linked: bool = False
     profile: Optional[UserProfileBase] = None
 
@@ -56,11 +57,13 @@ class UserResponse(UserBase):
         if hasattr(data, "google_refresh_token"):
             # ORM object — read the token value safely
             token = getattr(data, "google_refresh_token", None)
+            confirmed = getattr(data, "email_confirmed", False)
             # Return a dict so Pydantic can set google_linked cleanly
             return {
                 "id": data.id,
                 "email": data.email,
                 "username": data.username,
+                "email_confirmed": confirmed,
                 "google_linked": token is not None and token != "",
                 "profile": data.profile,
             }
@@ -68,3 +71,16 @@ class UserResponse(UserBase):
             token = data.get("google_refresh_token")
             data["google_linked"] = token is not None and token != ""
         return data
+
+
+class OTPRequest(BaseModel):
+    email: EmailStr
+
+
+class OTPVerify(BaseModel):
+    email: EmailStr
+    otp: str
+
+
+class EmailConfirmRequest(BaseModel):
+    token: str

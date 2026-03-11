@@ -8,7 +8,7 @@ Merged: google_refresh_token is nullable (not every user links Google).
 
 from datetime import datetime
 from typing import Optional, Any
-from sqlalchemy import String, Integer, Float, DateTime, ForeignKey
+from sqlalchemy import String, Integer, Float, Boolean, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from app.db.base import Base
@@ -21,6 +21,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
     username: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
+    email_confirmed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     google_refresh_token: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -64,3 +65,19 @@ class UserProfile(Base):
     persona_confidence: Mapped[float] = mapped_column(Float, default=0.0)
 
     user: Mapped["User"] = relationship("User", back_populates="profile")
+
+
+class OTPCode(Base):
+    """Stores one-time passcodes for login verification and email confirmation."""
+    __tablename__ = "otp_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    email: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(6), nullable=False)
+    purpose: Mapped[str] = mapped_column(String, nullable=False, default="login")  # "login" | "email_confirmation"
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
