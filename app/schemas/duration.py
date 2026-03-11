@@ -45,6 +45,7 @@ class SlotRecommendationResponse(BaseModel):
 
 class ConfirmSlotRequest(BaseModel):
     task_id: int
+    course_id: int
     scheduled_date: date
     scheduled_start_time: time
     scheduled_end_time: time

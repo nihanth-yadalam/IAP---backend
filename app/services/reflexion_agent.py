@@ -517,7 +517,7 @@ async def _generate_summary(
 
         from google import genai
 
-        client = genai.Client(api_key=api_key)
+        client = genai.Client(api_key=api_key, http_options={"api_version": "v1alpha"})
 
         # Build change description
         change_lines = []
@@ -540,7 +540,7 @@ Do not use technical terms like 'duration_ratio' or 'sample_count'.
 Speak directly to the student as 'you'."""
 
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             contents=prompt,
         )
         return response.text.strip()

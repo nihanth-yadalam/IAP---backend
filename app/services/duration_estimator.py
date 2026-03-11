@@ -63,10 +63,14 @@ async def get_duration_estimation_context(
     course_mem = subject_modifiers.get(course_key)
 
     if course_mem is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Course memory not found. Please ensure the course was created correctly.",
-        )
+        logger.warning(f"[duration_estimator] Course memory not found for {course_id}. Using defaults.")
+        course_mem = {
+            "confidence_score": 5,
+            "duration_multiplier": 1.0,
+            "drain_rate": 5,
+            "session_count": 0,
+            "manual_rules": []
+        }
 
     global_settings = memory.get("global_settings", {})
     behavioral_signals = memory.get("behavioral_signals", {})
@@ -195,12 +199,12 @@ async def call_gemini_for_duration(prompt: str) -> DurationEstimationResponse:
 
         from google import genai
 
-        client = genai.Client(api_key=api_key)
+        client = genai.Client(api_key=api_key, http_options={"api_version": "v1alpha"})
 
         # Run synchronous Gemini call in a thread with a 30s timeout
         def _call():
             return client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash",
                 contents=prompt,
             )
 
@@ -247,6 +251,8 @@ async def call_gemini_for_duration(prompt: str) -> DurationEstimationResponse:
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         logger.error(f"[duration_estimator] Unexpected error: {e}")
         raise HTTPException(
             status_code=503,

@@ -408,10 +408,12 @@ async def get_scheduling_context(
     course_mem = subject_modifiers.get(course_key)
 
     if course_mem is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Course memory not found. Please ensure the course was created correctly.",
-        )
+        logger.warning(f"[scheduler] Course memory not found for {course_id}. Using defaults.")
+        course_mem = {
+            "drain_rate": 5,
+            "manual_rules": [],
+            "time_block_affinity": {}
+        }
 
     global_settings = memory.get("global_settings", {})
     behavioral_signals = memory.get("behavioral_signals", {})
@@ -609,11 +611,11 @@ async def call_gemini_for_scheduling(
 
         from google import genai
 
-        client = genai.Client(api_key=api_key)
+        client = genai.Client(api_key=api_key, http_options={"api_version": "v1alpha"})
 
         def _call():
             return client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash",
                 contents=prompt,
             )
 

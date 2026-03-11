@@ -231,12 +231,20 @@ async def confirm_slot(
                 )
 
     # 4. Write scheduled times
+    from datetime import datetime
+    import tzlocal
+    
+    local_tz = tzlocal.get_localzone()
+
+    task.course_id = request.course_id
     task.scheduled_start_time = datetime.combine(
-        request.scheduled_date, request.scheduled_start_time, tzinfo=timezone.utc
-    )
+        request.scheduled_date, request.scheduled_start_time
+    ).replace(tzinfo=local_tz)
+    
     task.scheduled_end_time = datetime.combine(
-        request.scheduled_date, request.scheduled_end_time, tzinfo=timezone.utc
-    )
+        request.scheduled_date, request.scheduled_end_time
+    ).replace(tzinfo=local_tz)
+    
     task.status = TaskStatus.In_Progress
 
     await db.commit()
