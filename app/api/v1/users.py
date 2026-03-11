@@ -23,19 +23,20 @@ from app.schemas.user import (
     UserProfileBase,
     UserUpdatePassword,
 )
+from app.services.email_service import send_email_confirmation
 
 router = APIRouter()
 
 
 # ── M2 — Register ────────────────────────────────────────────────────
 
-@router.post("/", response_model=UserResponse)
+@router.post("/", status_code=201)
 async def create_user(
     *,
     db: Annotated[AsyncSession, Depends(deps.get_db)],
     user_in: UserCreate,
 ) -> Any:
-    """Create new user."""
+    """Create new user and send email confirmation."""
     result = await db.execute(select(User).where(User.email == user_in.email))
     if result.scalars().first():
         raise HTTPException(status_code=400, detail="The user with this email already exists in the system.")
@@ -48,6 +49,7 @@ async def create_user(
         email=user_in.email,
         username=user_in.username,
         password_hash=security.get_password_hash(user_in.password),
+        email_confirmed=False,
     )
     db.add(user)
     await db.commit()
@@ -59,7 +61,15 @@ async def create_user(
     await db.commit()
     await db.refresh(user, attribute_names=["profile"])
 
-    return user
+    # Send confirmation email
+    token = utils.generate_email_confirmation_token(user.email)
+    email_sent = send_email_confirmation(user.email, token)
+
+    return {
+        "message": "Account created. Please check your email to confirm your address.",
+        "email": user.email,
+        "email_sent": email_sent,
+    }
 
 
 # ── M5 — Get current user ────────────────────────────────────────────
