@@ -46,13 +46,13 @@ jobs:
         env:
           PYTHONPATH: "."
         run: |
-          pytest tests/integration/ -v --tb=short
+          pytest tests/integration/ --confcutdir=tests -v --tb=short
 
       - name: Run regression tests
         env:
           PYTHONPATH: "."
         run: |
-          pytest tests/regression/ -v --tb=short
+          pytest tests/regression/ --confcutdir=tests -v --tb=short
 
       - name: Start server (smoke test)
         run: |
