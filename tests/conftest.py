@@ -55,7 +55,10 @@ async def normal_user_token_headers(async_client: AsyncClient, db_session: Async
     """
     Creates a test user and returns authentication headers.
     """
-    email = "test_user_pytest@example.com"
+    import uuid
+    uid = uuid.uuid4().hex[:8]
+    email = f"test_user_{uid}@example.com"
+    username = f"test_user_{uid}"
     password = "testpassword"
     
     from sqlalchemy import select
