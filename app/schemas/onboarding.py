@@ -1,31 +1,26 @@
 from enum import Enum
 from typing import Dict, Any, Optional
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 class Chronotype(str, Enum):
-    morning_lark = "morning_lark" # "morning" in request, but typically morning_lark/night_owl standard
-    night_owl = "night_owl"       # "evening" in request, adapting to standard
-    neutral = "neutral"
-    # Handling user request specifics: "morning", "evening", "neutral"
-    # Let's align with the REQUEST: "morning", "evening", "neutral"
     morning = "morning"
-    evening = "evening"
+    balanced = "balanced"
+    night = "night"
 
-class StudyStyle(str, Enum):
-    pomodoro = "pomodoro"
-    deep_work = "deep_work"
+class WorkStyle(str, Enum):
+    deep = "deep"
+    mixed = "mixed"
+    sprints = "sprints"
 
 class OnboardingAnswers(BaseModel):
+    name: str = Field(..., description="Full name of the user")
+    university: str = Field(..., description="University name")
+    major: str = Field(..., description="Major subject")
     chronotype: Chronotype
-    study_style: StudyStyle
-    subject_confidences: Dict[str, int]
+    work_style: WorkStyle
+    preferred_session_mins: int = Field(..., ge=15, le=180, description="Preferred study session length in minutes")
 
     model_config = ConfigDict(extra="allow")
 
-    @field_validator('subject_confidences')
-    @classmethod
-    def validate_confidence_scores(cls, v: Dict[str, int]) -> Dict[str, int]:
-        for subject, score in v.items():
-            if not (1 <= score <= 10):
-                raise ValueError(f"Confidence score for {subject} must be between 1 and 10")
-        return v
+    # Removed subject_confidences validator as it's no longer in the payload
+

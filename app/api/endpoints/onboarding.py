@@ -53,9 +53,17 @@ async def submit_questionnaire(
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
         
-    # Update onboarding_data
-    # Helper to convert pydantic to dict, handles enums usually
-    profile.onboarding_data = answers.model_dump()
+    # Update Profile fields
+    if answers.name:
+        profile.full_name = answers.name
+    if answers.university:
+        profile.university = answers.university
+    if answers.major:
+        profile.major = answers.major
+        
+    # Update onboarding_data (excluding profile fields)
+    onboarding_payload = answers.model_dump(exclude={"name", "university", "major"})
+    profile.onboarding_data = onboarding_payload
     
     db.add(profile)
     await db.commit()

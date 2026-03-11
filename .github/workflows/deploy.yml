@@ -1,0 +1,38 @@
+name: Deploy Backend to AWS Elastic Beanstalk
+
+on:
+  workflow_run:
+    workflows: ["IAP Backend CI"]
+    types: [completed]
+    branches: [main, backend_v1]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+
+      # This creates your .env file in the deployment package directly from your GitHub Secrets
+      - name: Create .env file for backend
+        run: |
+          echo "${{ secrets.BACKEND_ENV }}" > .env
+
+      - name: Generate deployment package
+        run: zip -r deploy.zip . -x '*.git*'
+
+      - name: Deploy to Elastic Beanstalk
+        uses: einaregilsson/beanstalk-deploy@v22
+        with:
+          aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          application_name: IAP_BACKEND_CD
+          environment_name: IAPBACKENDCD-env
+          version_label: "github-action-${{ github.event.workflow_run.head_branch }}-${{ github.run_id }}"
+          region: ap-south-1
+          deployment_package: deploy.zip
+          use_existing_version_if_available: true
