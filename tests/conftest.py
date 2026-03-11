@@ -87,7 +87,29 @@ async def normal_user_token_headers(async_client: AsyncClient, db_session: Async
         "password": password
     }
     r = await async_client.post(f"{settings.API_V1_STR}/auth/login/access-token", data=login_data)
-    tokens = r.json()
-    a_token = tokens["access_token"]
+    login_resp = r.json()
+
+    if "access_token" in login_resp:
+        # Direct token (no MFA)
+        a_token = login_resp["access_token"]
+    elif login_resp.get("status") == "otp_pending":
+        # MFA flow: read OTP from DB and verify
+        from app.models.user import OTPCode
+        otp_result = await db_session.execute(
+            select(OTPCode).where(OTPCode.user_id == user.id, OTPCode.purpose == "login")
+        )
+        otp_record = otp_result.scalars().first()
+        assert otp_record, "OTP record not found in DB after login"
+
+        r2 = await async_client.post(
+            f"{settings.API_V1_STR}/auth/login/verify-otp",
+            json={"email": email, "otp": otp_record.code}
+        )
+        tokens = r2.json()
+        assert "access_token" in tokens, f"OTP verify failed: {tokens}"
+        a_token = tokens["access_token"]
+    else:
+        raise AssertionError(f"Unexpected login response: {login_resp}")
+
     headers = {"Authorization": f"Bearer {a_token}"}
     return headers

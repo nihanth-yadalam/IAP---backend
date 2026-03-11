@@ -49,7 +49,33 @@ async def test_full_user_lifecycle(async_client: AsyncClient, db_session):
     }
     r = await async_client.post(f"{API}/auth/login/access-token", data=login_data)
     assert r.status_code == 200, f"Login failed: {r.text}"
-    tokens = r.json()
+    login_resp = r.json()
+
+    if "access_token" in login_resp:
+        # Direct token (no MFA)
+        tokens = login_resp
+    elif login_resp.get("status") == "otp_pending":
+        # MFA flow: read OTP from DB and verify
+        from app.models.user import OTPCode, User as UserModel
+        from sqlalchemy import select as sa_select
+        user_result = await db_session.execute(
+            sa_select(UserModel).where(UserModel.email == register_payload["email"])
+        )
+        user_obj = user_result.scalars().first()
+        otp_result = await db_session.execute(
+            sa_select(OTPCode).where(OTPCode.user_id == user_obj.id, OTPCode.purpose == "login")
+        )
+        otp_record = otp_result.scalars().first()
+        assert otp_record, "OTP record not found"
+
+        r2 = await async_client.post(
+            f"{API}/auth/login/verify-otp",
+            json={"email": register_payload["email"], "otp": otp_record.code}
+        )
+        tokens = r2.json()
+    else:
+        raise AssertionError(f"Unexpected login response: {login_resp}")
+
     assert "access_token" in tokens
     assert tokens["token_type"] == "bearer"
 
