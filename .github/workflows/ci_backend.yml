@@ -42,6 +42,18 @@ jobs:
                  tests/services/test_calendar.py \
                  --noconftest -v --tb=short
 
+      - name: Run integration tests
+        env:
+          PYTHONPATH: "."
+        run: |
+          pytest tests/integration/ -v --tb=short
+
+      - name: Run regression tests
+        env:
+          PYTHONPATH: "."
+        run: |
+          pytest tests/regression/ -v --tb=short
+
       - name: Start server (smoke test)
         run: |
           uvicorn app.main:app --host 127.0.0.1 --port 8000 &
