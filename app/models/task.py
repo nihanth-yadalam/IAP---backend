@@ -5,7 +5,7 @@ Course + Task + TaskLog + ReflexionLog models.
 from datetime import datetime, timezone
 from typing import Optional, Any
 from sqlalchemy import (
-    Integer, String, Boolean, Float, ForeignKey, DateTime, Text,
+    Integer, String, Boolean, Float, ForeignKey, DateTime, Text, JSON,
     Enum as SQLEnum, UniqueConstraint, CheckConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -129,7 +129,7 @@ class TaskLog(Base):
     was_on_time: Mapped[bool] = mapped_column(Boolean, nullable=False)
     delay_mins: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     duration_ratio: Mapped[float] = mapped_column(Float, nullable=False)
-    ai_feedback_tags: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    ai_feedback_tags: Mapped[Optional[dict]] = mapped_column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
 
     # Relationships
     task: Mapped["Task"] = relationship("Task", back_populates="task_log")
@@ -152,7 +152,7 @@ class ReflexionLog(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )
     summary_text: Mapped[str] = mapped_column(Text, nullable=False)
-    updated_traits: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    updated_traits: Mapped[Optional[dict]] = mapped_column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
     reflexion_trigger: Mapped[str] = mapped_column(String(50), nullable=False)
 
     # Relationships

@@ -8,7 +8,7 @@ Merged: google_refresh_token is nullable (not every user links Google).
 
 from datetime import datetime
 from typing import Optional, Any
-from sqlalchemy import String, Integer, Float, Boolean, DateTime, ForeignKey
+from sqlalchemy import String, Integer, Float, Boolean, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from app.db.base import Base
@@ -60,7 +60,7 @@ class UserProfile(Base):
     university: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     timezone: Mapped[Optional[str]] = mapped_column(String, nullable=True, default="UTC")
     current_archetype: Mapped[str] = mapped_column(String, default="Unclassified")
-    onboarding_data: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    onboarding_data: Mapped[dict[str, Any]] = mapped_column(JSON().with_variant(JSONB, "postgresql"), default=dict)
     last_reflexion_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     persona_confidence: Mapped[float] = mapped_column(Float, default=0.0)
 
