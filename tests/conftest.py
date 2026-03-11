@@ -70,6 +70,7 @@ async def normal_user_token_headers(async_client: AsyncClient, db_session: Async
             email=email,
             password_hash=get_password_hash(password),
             username=username,
+            email_confirmed=True,
         )
         db_session.add(user)
         await db_session.flush()

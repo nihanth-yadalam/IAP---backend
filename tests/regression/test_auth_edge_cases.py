@@ -24,7 +24,7 @@ async def test_register_duplicate_email(async_client: AsyncClient, db_session):
 
     # Pre-create a user in the DB
     email = f"dup_{uid}@example.com"
-    user = User(email=email, password_hash=get_password_hash("pass123"), username=f"dup_{uid}")
+    user = User(email=email, password_hash=get_password_hash("pass123"), username=f"dup_{uid}", email_confirmed=True)
     db_session.add(user)
     await db_session.flush()
     profile = UserProfile(user_id=user.id, full_name="Dup")
@@ -51,7 +51,7 @@ async def test_register_duplicate_username(async_client: AsyncClient, db_session
     uid = uuid.uuid4().hex[:6]
 
     username = f"taken_{uid}"
-    user = User(email=f"uniq_{uid}@example.com", password_hash=get_password_hash("pass"), username=username)
+    user = User(email=f"uniq_{uid}@example.com", password_hash=get_password_hash("pass"), username=username, email_confirmed=True)
     db_session.add(user)
     await db_session.flush()
     profile = UserProfile(user_id=user.id, full_name="U")
@@ -92,7 +92,7 @@ async def test_expired_token_rejected(async_client: AsyncClient, db_session):
     import uuid
     uid = uuid.uuid4().hex[:6]
 
-    user = User(email=f"exp_{uid}@example.com", password_hash=get_password_hash("p"), username=f"exp_{uid}")
+    user = User(email=f"exp_{uid}@example.com", password_hash=get_password_hash("p"), username=f"exp_{uid}", email_confirmed=True)
     db_session.add(user)
     await db_session.flush()
     profile = UserProfile(user_id=user.id, full_name="E")
