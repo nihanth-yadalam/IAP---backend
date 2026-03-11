@@ -1,32 +1,40 @@
 """
 Auth endpoints — merged from System A (login) + System B (Google OAuth).
-M1: POST /login/access-token
+M1: POST /login/access-token  — verify credentials, send OTP
+M1b: POST /login/verify-otp   — verify OTP, return JWT
+     POST /confirm-email       — confirm email address via token
+     POST /resend-confirmation  — resend confirmation email
 M3: GET  /google/authorize
 M4: GET  /google/callback
 """
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import secrets
 import urllib.parse
 
 from app.api import deps
-from app.core import security
+from app.core import security, utils
 from app.core.config import settings
-from app.models.user import User, UserProfile
+from app.models.user import User, UserProfile, OTPCode
 from app.models.sync import CalendarSyncState
 from app.services.google_oauth import GoogleOAuthService
 from app.services.calendar_service import CalendarService
 from app.services.sync_engine import SyncEngine
+from app.services.email_service import send_otp_email, send_email_confirmation
+from app.schemas.user import OTPVerify, EmailConfirmRequest
 
 router = APIRouter()
+
+MAX_OTP_ATTEMPTS = 5
+OTP_EXPIRY_MINUTES = 10
 
 # ── Shared service factories ─────────────────────────────────────────
 
@@ -43,14 +51,14 @@ def _sync_engine() -> SyncEngine:
     return SyncEngine(oauth, CalendarService(oauth))
 
 
-# ── M1 — Login ───────────────────────────────────────────────────────
+# ── M1 — Login (verify credentials → send OTP) ──────────────────────
 
 @router.post("/login/access-token")
 async def login_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: Annotated[AsyncSession, Depends(deps.get_db)],
 ) -> Any:
-    """OAuth2 compatible token login, get an access token for future requests."""
+    """Verify credentials, then send a 6-digit OTP to the user's email."""
     result = await db.execute(
         select(User).where(
             or_(User.email == form_data.username, User.username == form_data.username)
@@ -61,11 +69,129 @@ async def login_access_token(
     if not user or not security.verify_password(form_data.password, user.password_hash):
         raise HTTPException(status_code=400, detail="Incorrect email or password")
 
+    if not user.email_confirmed:
+        raise HTTPException(
+            status_code=403,
+            detail="Email not confirmed. Please check your inbox for the confirmation link.",
+        )
+
+    # Clean up any existing OTP for this user
+    await db.execute(
+        delete(OTPCode).where(OTPCode.user_id == user.id, OTPCode.purpose == "login")
+    )
+
+    # Generate and store OTP
+    code = utils.generate_otp_code()
+    otp = OTPCode(
+        user_id=user.id,
+        email=user.email,
+        code=code,
+        purpose="login",
+        expires_at=datetime.utcnow() + timedelta(minutes=OTP_EXPIRY_MINUTES),
+    )
+    db.add(otp)
+    await db.commit()
+
+    # Send OTP email
+    send_otp_email(user.email, code)
+
+    return {"status": "otp_pending", "email": user.email}
+
+
+# ── M1b — Verify OTP ─────────────────────────────────────────────────
+
+@router.post("/login/verify-otp")
+async def verify_otp(
+    body: OTPVerify,
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+) -> Any:
+    """Verify the 6-digit OTP and return a JWT access token."""
+    result = await db.execute(
+        select(OTPCode).where(
+            OTPCode.email == body.email,
+            OTPCode.purpose == "login",
+        )
+    )
+    otp = result.scalars().first()
+
+    if not otp:
+        raise HTTPException(status_code=400, detail="No OTP found. Please log in again.")
+
+    if otp.expires_at < datetime.utcnow():
+        await db.delete(otp)
+        await db.commit()
+        raise HTTPException(status_code=400, detail="OTP expired. Please log in again.")
+
+    if otp.attempts >= MAX_OTP_ATTEMPTS:
+        await db.delete(otp)
+        await db.commit()
+        raise HTTPException(status_code=400, detail="Too many attempts. Please log in again.")
+
+    if otp.code != body.otp:
+        otp.attempts += 1
+        await db.commit()
+        remaining = MAX_OTP_ATTEMPTS - otp.attempts
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid OTP. {remaining} attempt(s) remaining.",
+        )
+
+    # OTP is valid — issue JWT
+    user_id = otp.user_id
+    await db.delete(otp)
+    await db.commit()
+
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     return {
-        "access_token": security.create_access_token(user.id, expires_delta=access_token_expires),
+        "access_token": security.create_access_token(user_id, expires_delta=access_token_expires),
         "token_type": "bearer",
     }
+
+
+# ── Email confirmation ────────────────────────────────────────────────
+
+@router.post("/confirm-email")
+async def confirm_email(
+    body: EmailConfirmRequest,
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+) -> Any:
+    """Confirm a user's email address using the token sent during registration."""
+    email = utils.verify_email_confirmation_token(body.token)
+    if not email:
+        raise HTTPException(status_code=400, detail="Invalid or expired confirmation link.")
+
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    if user.email_confirmed:
+        return {"message": "Email already confirmed."}
+
+    user.email_confirmed = True
+    await db.commit()
+    return {"message": "Email confirmed successfully. You can now sign in."}
+
+
+@router.post("/resend-confirmation")
+async def resend_confirmation(
+    email: str = Query(...),
+    db: AsyncSession = Depends(deps.get_db),
+) -> Any:
+    """Resend the email confirmation link."""
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalars().first()
+
+    if not user:
+        # Don't reveal whether the email exists
+        return {"message": "If that email is registered, a new confirmation link has been sent."}
+
+    if user.email_confirmed:
+        return {"message": "Email is already confirmed."}
+
+    token = utils.generate_email_confirmation_token(user.email)
+    send_email_confirmation(user.email, token)
+    return {"message": "If that email is registered, a new confirmation link has been sent."}
 
 
 # ── Google Sign-In (no JWT required) ────────────────────────────────
@@ -142,6 +268,7 @@ async def google_login_callback(
             username=username,
             # Google-authenticated users have no usable password
             password_hash=security.get_password_hash(secrets.token_urlsafe(32)),
+            email_confirmed=True,  # Google has already verified the email
         )
         db.add(user)
         await db.flush()  # populate user.id
