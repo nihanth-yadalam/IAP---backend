@@ -37,6 +37,7 @@ jobs:
         env:
           PYTHONPATH: "."
         run: |
+          python scripts/drop_test_db.py
           alembic upgrade head
 
       - name: Run unit tests
