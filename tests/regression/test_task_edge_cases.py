@@ -18,8 +18,10 @@ async def test_task_time_collision(async_client: AsyncClient, normal_user_token_
     """Two tasks with overlapping time slots should return 409."""
     headers = normal_user_token_headers
 
+    import uuid
+    uid = uuid.uuid4().hex[:6]
     # Create course
-    r = await async_client.post(f"{API}/courses/", headers=headers, json={"name": "Collision Regress Course", "color_code": "#AABB00"})
+    r = await async_client.post(f"{API}/courses/", headers=headers, json={"name": f"Collision Regress Course {uid}", "color_code": "#AABB00"})
     assert r.status_code == 200
     course_id = r.json()["id"]
 

@@ -19,10 +19,12 @@ async def test_register_duplicate_email(async_client: AsyncClient, db_session):
     """Registering with an already-taken email should return 400."""
     from app.models.user import User, UserProfile
     from app.core.security import get_password_hash
+    import uuid
+    uid = uuid.uuid4().hex[:6]
 
     # Pre-create a user in the DB
-    email = "dup_regress@example.com"
-    user = User(email=email, password_hash=get_password_hash("pass123"), username="dup_regress")
+    email = f"dup_{uid}@example.com"
+    user = User(email=email, password_hash=get_password_hash("pass123"), username=f"dup_{uid}")
     db_session.add(user)
     await db_session.flush()
     profile = UserProfile(user_id=user.id, full_name="Dup")
@@ -45,9 +47,11 @@ async def test_register_duplicate_username(async_client: AsyncClient, db_session
     """Registering with an already-taken username should return 400."""
     from app.models.user import User, UserProfile
     from app.core.security import get_password_hash
+    import uuid
+    uid = uuid.uuid4().hex[:6]
 
-    username = "taken_username"
-    user = User(email="unique_email@example.com", password_hash=get_password_hash("pass"), username=username)
+    username = f"taken_{uid}"
+    user = User(email=f"uniq_{uid}@example.com", password_hash=get_password_hash("pass"), username=username)
     db_session.add(user)
     await db_session.flush()
     profile = UserProfile(user_id=user.id, full_name="U")
@@ -55,7 +59,7 @@ async def test_register_duplicate_username(async_client: AsyncClient, db_session
     await db_session.commit()
 
     r = await async_client.post(f"{API}/users/", json={
-        "email": "another_unique@example.com",
+        "email": f"another_{uid}@example.com",
         "username": username,
         "password": "Pass123!",
     })
@@ -85,8 +89,10 @@ async def test_expired_token_rejected(async_client: AsyncClient, db_session):
     """An expired JWT should be rejected."""
     from app.models.user import User, UserProfile
     from app.core.security import get_password_hash
+    import uuid
+    uid = uuid.uuid4().hex[:6]
 
-    user = User(email="expired_token@example.com", password_hash=get_password_hash("p"), username="expired_usr")
+    user = User(email=f"exp_{uid}@example.com", password_hash=get_password_hash("p"), username=f"exp_{uid}")
     db_session.add(user)
     await db_session.flush()
     profile = UserProfile(user_id=user.id, full_name="E")

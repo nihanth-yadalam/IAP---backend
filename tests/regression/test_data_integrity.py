@@ -19,11 +19,17 @@ async def test_course_and_task_counts(async_client: AsyncClient, normal_user_tok
     headers = normal_user_token_headers
 
     # Create 2 courses
-    for i in range(2):
-        r = await async_client.post(f"{API}/courses/", headers=headers, json={
-            "name": f"Count Course {i}",
-            "color_code": f"#00{i}{i}{i}{i}",
-        })
+    import uuid
+    uid = uuid.uuid4().hex[:6]
+    for i in range(3):
+        r = await async_client.post(
+            f"{API}/courses/",
+            headers=headers,
+            json={
+                "name": f"Count Course {uid} {i}",
+                "color_code": "#000000"
+            }
+        )
         assert r.status_code == 200
 
     r = await async_client.get(f"{API}/courses/", headers=headers)

@@ -19,13 +19,15 @@ async def test_task_crud_lifecycle(async_client: AsyncClient, normal_user_token_
     """Full task lifecycle: create course → create task → update → delete."""
     headers = normal_user_token_headers
 
+    import uuid
+    uid = uuid.uuid4().hex[:6]
     # ── 1. Create a course ───────────────────────────────────────────
-    course_data = {"name": "Integration Test Course", "color_code": "#ABCDEF"}
+    course_data = {"name": f"Integration Test Course {uid}", "color_code": "#ABCDEF"}
     r = await async_client.post(f"{API}/courses/", headers=headers, json=course_data)
     assert r.status_code == 200, f"Create course failed: {r.text}"
     course = r.json()
     course_id = course["id"]
-    assert course["name"] == "Integration Test Course"
+    assert course["name"] == f"Integration Test Course {uid}"
 
     # ── 2. Create a task under that course ────────────────────────────
     start = (datetime.utcnow() + timedelta(days=5)).isoformat()
@@ -81,9 +83,11 @@ async def test_task_belongs_to_correct_course(async_client: AsyncClient, normal_
     """Verify a task created under Course A shows course A's ID."""
     headers = normal_user_token_headers
 
+    import uuid
+    uid = uuid.uuid4().hex[:6]
     # Create two courses
-    r1 = await async_client.post(f"{API}/courses/", headers=headers, json={"name": "Course Alpha", "color_code": "#111111"})
-    r2 = await async_client.post(f"{API}/courses/", headers=headers, json={"name": "Course Beta", "color_code": "#222222"})
+    r1 = await async_client.post(f"{API}/courses/", headers=headers, json={"name": f"Course Alpha {uid}", "color_code": "#111111"})
+    r2 = await async_client.post(f"{API}/courses/", headers=headers, json={"name": f"Course Beta {uid}", "color_code": "#222222"})
     assert r1.status_code == 200 and r2.status_code == 200
     cid_a = r1.json()["id"]
     cid_b = r2.json()["id"]

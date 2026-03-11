@@ -7,6 +7,7 @@ Uses the async_client + db_session fixtures from tests/conftest.py
 (real DB via Neon, session-scoped engine).
 """
 
+import uuid
 import pytest
 from httpx import AsyncClient
 from app.core.config import settings
@@ -20,9 +21,10 @@ async def test_full_user_lifecycle(async_client: AsyncClient):
     """Register, login, read profile, update profile — all in sequence."""
 
     # ── 1. Register ──────────────────────────────────────────────────
+    uid = uuid.uuid4().hex[:8]
     register_payload = {
-        "email": "integ_user@example.com",
-        "username": "integ_user",
+        "email": f"integ_user_{uid}@example.com",
+        "username": f"integ_user_{uid}",
         "password": "IntegTest@123",
     }
     r = await async_client.post(f"{API}/users/", json=register_payload)
