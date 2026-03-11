@@ -3,7 +3,6 @@ from app.core.config import settings
 
 engine = create_async_engine(
     settings.DATABASE_URL,
-    connect_args={"ssl": True},
     pool_pre_ping=True,
     pool_recycle=300,
     pool_size=5,

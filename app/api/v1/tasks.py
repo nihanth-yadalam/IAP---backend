@@ -4,29 +4,262 @@ M17: GET    /tasks/
 M18: POST   /tasks/
 M19: PATCH  /tasks/{id}
 M20: DELETE /tasks/{id}
+M21: POST   /tasks/{id}/complete
+M28: POST   /tasks/estimate-duration
+M29: POST   /tasks/recommend-slots
+M30: POST   /tasks/confirm-slot
 """
 
 from typing import Any, Annotated, List, Optional
-from datetime import datetime
+from datetime import datetime, date, time, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import select, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api import deps
 from app.models.user import User
-from app.models.task import Task, Course, TaskStatus
+from app.models.task import Task, TaskLog, Course, TaskStatus
 from app.models.schedule import FixedSlot
-from app.schemas.tasks import TaskCreate, TaskUpdate, TaskResponse
+from app.schemas.tasks import TaskCreate, TaskUpdate, TaskResponse, TaskFeedbackRequest, TaskLogResponse
 from app.services.google_oauth import GoogleOAuthService
 from app.services.calendar_service import CalendarService
 from app.services.sync_engine import SyncEngine
+from app.services.memory_calculator import get_time_block
+from app.schemas.duration import (
+    DurationEstimationRequest, DurationEstimationResponse,
+    SlotRecommendationRequest, SlotRecommendationResponse, ConfirmSlotRequest,
+)
+from app.services.duration_estimator import (
+    get_duration_estimation_context,
+    build_duration_estimation_prompt,
+    call_gemini_for_duration,
+)
+from app.services.scheduler_service import (
+    get_free_slots,
+    get_daily_burnout_scores,
+    filter_candidate_slots,
+    get_scheduling_context,
+    build_scheduling_prompt,
+    call_gemini_for_scheduling,
+)
 
 router = APIRouter()
 
 
-# ── Google Calendar helpers for tasks ─────────────────────────────────
+# ── M28 — AI Duration Estimation ─────────────────────────────────────
+
+@router.post("/estimate-duration", response_model=DurationEstimationResponse)
+async def estimate_duration(
+    *,
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+    request: DurationEstimationRequest,
+) -> Any:
+    """AI-powered duration estimation based on student memory. Read-only, no DB writes."""
+    # 1. Retrieve memory context
+    memory_context = await get_duration_estimation_context(
+        user_id=current_user.id,
+        course_id=request.course_id,
+        db=db,
+    )
+
+    # 2. Build the prompt
+    task_details = {
+        "task_type": request.task_type,
+        "difficulty": request.difficulty,
+        "description": request.description,
+    }
+    prompt = build_duration_estimation_prompt(task_details, memory_context)
+
+    # 3. Call Gemini
+    result = await call_gemini_for_duration(prompt)
+
+    return result
+
+
+# ── M29 — AI Slot Recommendation ─────────────────────────────────────
+
+@router.post("/recommend-slots", response_model=SlotRecommendationResponse)
+async def recommend_slots(
+    *,
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+    request: SlotRecommendationRequest,
+) -> Any:
+    """AI-powered slot recommendation. Read-only, no DB writes."""
+    # 1. Retrieve scheduling context
+    memory_context = await get_scheduling_context(
+        user_id=current_user.id,
+        course_id=request.course_id,
+        db=db,
+    )
+
+    # 2. Find free slots
+    free = await get_free_slots(
+        user_id=current_user.id,
+        period_start=request.period_start,
+        period_end=request.period_end,
+        estimated_duration_mins=request.estimated_duration_mins,
+        db=db,
+    )
+    if not free:
+        raise HTTPException(
+            status_code=404,
+            detail="No available slots found in the requested period. Try extending your time window.",
+        )
+
+    # 3. Compute daily burnout scores
+    burnout_scores = await get_daily_burnout_scores(
+        user_id=current_user.id,
+        period_start=request.period_start,
+        period_end=request.period_end,
+        db=db,
+    )
+
+    # 4. Pre-filter candidates
+    candidates = filter_candidate_slots(
+        free_slots=free,
+        burnout_scores=burnout_scores,
+        course_memory=memory_context["course_memory"],
+        user_memory={"time_block_stats": memory_context["time_block_stats"]},
+    )
+    if not candidates:
+        raise HTTPException(
+            status_code=404,
+            detail="No suitable slots found after applying your schedule constraints and burnout levels.",
+        )
+
+    # 5. Build prompt
+    task_details = {
+        "task_type": request.task_type,
+        "difficulty": request.difficulty,
+        "description": request.description,
+    }
+    prompt = build_scheduling_prompt(
+        task_details=task_details,
+        candidate_slots=candidates,
+        memory_context=memory_context,
+        estimated_duration_mins=request.estimated_duration_mins,
+    )
+
+    # 6. Call Gemini
+    result = await call_gemini_for_scheduling(
+        prompt=prompt,
+        estimated_duration_mins=request.estimated_duration_mins,
+        period_start=request.period_start,
+        period_end=request.period_end,
+    )
+
+    return result
+
+
+# ── M30 — Confirm Slot ───────────────────────────────────────────────
+
+@router.post("/confirm-slot", response_model=TaskResponse)
+async def confirm_slot(
+    *,
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+    request: ConfirmSlotRequest,
+) -> Any:
+    """Confirm a recommended or manually-chosen slot for a task."""
+    # 1. Verify task exists and belongs to user
+    task_result = await db.execute(
+        select(Task)
+        .options(selectinload(Task.course))
+        .where(Task.id == request.task_id, Task.user_id == current_user.id)
+    )
+    task = task_result.scalars().first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # 2. Verify status
+    if task.status == TaskStatus.Completed:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot schedule a completed task.",
+        )
+
+    # 3. Check for conflicts
+    day_name = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][
+        request.scheduled_date.weekday()
+    ]
+
+    # 3a. Check fixed slots
+    fixed_result = await db.execute(
+        select(FixedSlot).where(
+            FixedSlot.user_id == current_user.id,
+            FixedSlot.day_of_week == day_name,
+            FixedSlot.is_deleted == False,
+        )
+    )
+    for slot in fixed_result.scalars().all():
+        if slot.start_time and slot.end_time:
+            if _times_overlap(
+                request.scheduled_start_time, request.scheduled_end_time,
+                slot.start_time, slot.end_time,
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="This slot conflicts with an existing commitment. Please choose another time.",
+                )
+
+    # 3b. Check scheduled tasks
+    day_start_dt = datetime.combine(request.scheduled_date, time(0, 0), tzinfo=timezone.utc)
+    day_end_dt = datetime.combine(request.scheduled_date + timedelta(days=1), time(0, 0), tzinfo=timezone.utc)
+
+    task_clash_result = await db.execute(
+        select(Task).where(
+            Task.user_id == current_user.id,
+            Task.id != request.task_id,
+            Task.scheduled_start_time >= day_start_dt,
+            Task.scheduled_start_time < day_end_dt,
+            Task.status != TaskStatus.Completed,
+        )
+    )
+    for existing_task in task_clash_result.scalars().all():
+        if existing_task.scheduled_start_time and existing_task.scheduled_end_time:
+            if _times_overlap(
+                request.scheduled_start_time, request.scheduled_end_time,
+                existing_task.scheduled_start_time.time(), existing_task.scheduled_end_time.time(),
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="This slot conflicts with an existing commitment. Please choose another time.",
+                )
+
+    # 4. Write scheduled times
+    from datetime import datetime
+    import tzlocal
+    
+    local_tz = tzlocal.get_localzone()
+
+    task.course_id = request.course_id
+    task.scheduled_start_time = datetime.combine(
+        request.scheduled_date, request.scheduled_start_time
+    ).replace(tzinfo=local_tz)
+    
+    task.scheduled_end_time = datetime.combine(
+        request.scheduled_date, request.scheduled_end_time
+    ).replace(tzinfo=local_tz)
+    
+    task.status = TaskStatus.In_Progress
+
+    await db.commit()
+    await db.refresh(task)
+
+    # 5. Push to Google Calendar if linked
+    await _push_task_to_google(db, current_user, task)
+
+    return task
+
+
+def _times_overlap(s1: time, e1: time, s2: time, e2: time) -> bool:
+    """Check if two time ranges overlap."""
+    return s1 < e2 and s2 < e1
+
 
 def _calendar_service() -> CalendarService:
     return CalendarService(GoogleOAuthService())
@@ -330,4 +563,89 @@ async def delete_task(
     await db.delete(task)
     await db.commit()
     return {"message": "Task deleted successfully"}
+
+
+# ── M21 — Complete task (feedback endpoint) ──────────────────────────
+
+@router.post("/{task_id}/complete", response_model=TaskLogResponse)
+async def complete_task(
+    *,
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+    task_id: int,
+    feedback: TaskFeedbackRequest,
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+    background_tasks: BackgroundTasks,
+) -> Any:
+    """
+    Mark a task as completed with user feedback.
+    Calculates derived fields server-side and triggers reflexion check in background.
+    """
+    # 1. Verify task exists
+    result = await db.execute(select(Task).where(Task.id == task_id))
+    task = result.scalars().first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # 2. Verify ownership
+    if task.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to complete this task")
+
+    # 3. Verify not already completed
+    if task.status == TaskStatus.Completed:
+        raise HTTPException(status_code=400, detail="Task is already completed")
+
+    # 4. Set completion time
+    completion_time = datetime.now(timezone.utc)
+
+    # 5. Derive computed fields
+    time_block = get_time_block(completion_time.hour)
+
+    if task.deadline:
+        was_on_time = completion_time <= task.deadline
+        if not was_on_time:
+            delay_mins = int((completion_time - task.deadline).total_seconds() / 60)
+        else:
+            delay_mins = 0
+    else:
+        was_on_time = True
+        delay_mins = 0
+
+    if task.estimated_duration_mins and task.estimated_duration_mins > 0:
+        duration_ratio = feedback.actual_duration_mins / task.estimated_duration_mins
+    else:
+        duration_ratio = 1.0
+
+    # 6. Update task status to Completed
+    task.status = TaskStatus.Completed
+    db.add(task)
+
+    # 7. Create task log
+    task_log = TaskLog(
+        task_id=task.id,
+        user_id=current_user.id,
+        actual_duration_mins=feedback.actual_duration_mins,
+        drain_intensity=feedback.drain_intensity,
+        mood_note=feedback.mood_note,
+        completion_time=completion_time,
+        time_block=time_block,
+        was_on_time=was_on_time,
+        delay_mins=delay_mins,
+        duration_ratio=duration_ratio,
+        ai_feedback_tags=None,
+    )
+    db.add(task_log)
+    await db.commit()
+    await db.refresh(task_log)
+
+    # 8. Delete from Google Calendar if linked
+    if task.google_event_id:
+        await _delete_task_from_google(current_user, task.google_event_id)
+        task.google_event_id = None
+        await db.commit()
+
+    # 9. Trigger reflexion check in background (non-blocking)
+    from app.services.reflexion_agent import check_reflexion_triggers
+    background_tasks.add_task(check_reflexion_triggers, current_user.id)
+
+    return task_log
 

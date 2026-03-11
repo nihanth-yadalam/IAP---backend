@@ -1,5 +1,11 @@
-﻿from pydantic import BaseModel, EmailStr, ConfigDict, model_validator
+from pydantic import BaseModel, EmailStr, ConfigDict, model_validator, Field
 from typing import Optional, Any
+
+
+class GlobalMemorySettingsUpdate(BaseModel):
+    chronotype: Optional[str] = None
+    base_energy_level: Optional[int] = Field(None, ge=1, le=10)
+    preferred_session_duration_mins: Optional[int] = Field(None, gt=0)
 
 
 class UserBase(BaseModel):

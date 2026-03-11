@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     # WEBHOOKS (from System B)
     WEBHOOK_BASE_URL: str = ""
 
+    # GEMINI AI (for reflexion agent summaries)
+    GEMINI_API_KEY: str = ""
+
     # SERVER
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000

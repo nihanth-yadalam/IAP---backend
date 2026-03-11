@@ -6,22 +6,28 @@ M6:  PUT  /users/me/profile    — update profile
 M7:  POST /users/me/password   — change password
 M8:  POST /users/password-recovery/{email}
 M9:  POST /users/reset-password/
+M22: GET  /users/me/memory
+M23: GET  /users/me/memory/summaries
+M24: POST /users/me/memory/rules
+M25: POST /users/me/reflexion/trigger
 """
 
-from typing import Any, Annotated
+from typing import Any, Annotated, List
 
-from fastapi import APIRouter, Body, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
 from app.core import security, utils
 from app.models.user import User, UserProfile
+from app.models.task import ReflexionLog
 from app.schemas.user import (
     UserCreate,
     UserResponse,
     UserProfileBase,
     UserUpdatePassword,
+    GlobalMemorySettingsUpdate,
 )
 from app.services.email_service import send_email_confirmation
 
@@ -203,3 +209,197 @@ async def reset_password(
     db.add(user)
     await db.commit()
     return {"message": "Password updated successfully"}
+
+
+# ── M22 — Get AI memory ──────────────────────────────────────────────
+
+@router.get("/me/memory")
+async def get_user_memory(
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+) -> Any:
+    """Returns the full memory JSONB for the authenticated user."""
+    profile = current_user.profile
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return profile.onboarding_data or {}
+
+
+# ── M23 — Get recent reflexion summaries ─────────────────────────────
+
+@router.get("/me/memory/summaries")
+async def get_memory_summaries(
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+) -> Any:
+    """Returns the 5 most recent reflexion log rows for insights section."""
+    result = await db.execute(
+        select(ReflexionLog)
+        .where(ReflexionLog.user_id == current_user.id)
+        .order_by(ReflexionLog.generated_at.desc())
+        .limit(5)
+    )
+    logs = result.scalars().all()
+    return [
+        {
+            "id": log.id,
+            "generated_at": log.generated_at.isoformat(),
+            "summary_text": log.summary_text,
+            "updated_traits": log.updated_traits,
+            "reflexion_trigger": log.reflexion_trigger,
+        }
+        for log in logs
+    ]
+
+
+# ── M24 — Add manual rule to generic memory ─────────────────────────
+
+@router.post("/me/memory/rules")
+async def add_memory_rule(
+    *,
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+    rule: str = Body(..., embed=True),
+) -> Any:
+    """Appends a text rule to manual_rules in generic memory."""
+    import json
+
+    await db.execute(
+        text(
+            """
+            UPDATE user_profiles
+            SET onboarding_data = jsonb_set(
+                COALESCE(onboarding_data, '{}'::jsonb),
+                '{manual_rules}',
+                COALESCE(onboarding_data->'manual_rules', '[]'::jsonb) || :rule_json::jsonb,
+                true
+            )
+            WHERE user_id = :user_id
+            """
+        ),
+        {"user_id": current_user.id, "rule_json": json.dumps(rule)},
+    )
+    await db.commit()
+    return {"message": "Rule added successfully", "rule": rule}
+
+
+@router.put("/me/memory/rules/{index}")
+async def update_memory_rule(
+    *,
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+    index: int,
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+    rule: str = Body(..., embed=True),
+) -> Any:
+    """Updates a text rule at a specific index in manual_rules."""
+    import json
+    from sqlalchemy import text
+
+    # We use jsonb_set with a path array constructed directly in SQL
+    # using the element index. Note: Postgres jsonb arrays are 0-indexed.
+    await db.execute(
+        text(
+            """
+            UPDATE user_profiles
+            SET onboarding_data = jsonb_set(
+                onboarding_data,
+                ARRAY['manual_rules', :index_str],
+                :rule_json::jsonb,
+                false
+            )
+            WHERE user_id = :user_id 
+              AND jsonb_array_length(onboarding_data->'manual_rules') > :index
+            """
+        ),
+        {
+            "user_id": current_user.id, 
+            "index_str": str(index), 
+            "index": index,
+            "rule_json": json.dumps(rule)
+        },
+    )
+    await db.commit()
+    return {"message": "Rule updated successfully", "index": index, "rule": rule}
+
+
+@router.delete("/me/memory/rules/{index}")
+async def delete_memory_rule(
+    *,
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+    index: int,
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+) -> Any:
+    """Deletes a text rule at a specific index in manual_rules."""
+    from sqlalchemy import text
+
+    # The minus operator removes an element from a jsonb array by index
+    await db.execute(
+        text(
+            """
+            UPDATE user_profiles
+            SET onboarding_data = onboarding_data #- ARRAY['manual_rules', :index_str]
+            WHERE user_id = :user_id
+              AND jsonb_array_length(onboarding_data->'manual_rules') > :index
+            """
+        ),
+        {
+            "user_id": current_user.id, 
+            "index_str": str(index), 
+            "index": index
+        },
+    )
+    await db.commit()
+    return {"message": "Rule deleted successfully", "index": index}
+
+
+# ── M25 — Update memory settings (global) ───────────────────────────
+
+@router.put("/me/memory/settings")
+async def update_memory_settings(
+    *,
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+    settings: GlobalMemorySettingsUpdate,
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+) -> Any:
+    """Update global AI memory settings (chronotype, base energy, etc)."""
+    import json
+    from sqlalchemy import text
+
+    updates = settings.model_dump(exclude_unset=True)
+    if not updates:
+        return {"message": "No settings to update"}
+
+    # Dynamically build the jsonb_set string because the key is dynamic
+    # Or just execute one by one
+    for key, val in updates.items():
+        await db.execute(
+            text(
+                f"""
+                UPDATE user_profiles
+                SET onboarding_data = jsonb_set(
+                    COALESCE(onboarding_data, '{{}}'::jsonb),
+                    '{{global_settings, {key}}}',
+                    :val_json::jsonb,
+                    true
+                )
+                WHERE user_id = :user_id
+                """
+            ),
+            {"user_id": current_user.id, "val_json": json.dumps(val)}
+        )
+    await db.commit()
+    return {"message": "Memory settings updated successfully"}
+
+
+# ── M26 — Manually trigger reflexion ─────────────────────────────────
+
+@router.post("/me/reflexion/trigger")
+async def trigger_reflexion(
+    db: Annotated[AsyncSession, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+    background_tasks: BackgroundTasks,
+) -> Any:
+    """Manually trigger reflexion agent for the current user."""
+    from app.services.reflexion_agent import run_reflexion_agent
+
+    background_tasks.add_task(run_reflexion_agent, current_user.id, db, "manual")
+    return {"message": "Reflexion triggered. Results will be available shortly."}

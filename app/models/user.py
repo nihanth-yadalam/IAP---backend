@@ -1,4 +1,4 @@
-﻿"""
+"""
 Merged User + UserProfile models.
 
 System A provided: email, username, password_hash, profile (JSONB onboarding_data).
@@ -8,7 +8,7 @@ Merged: google_refresh_token is nullable (not every user links Google).
 
 from datetime import datetime
 from typing import Optional, Any
-from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey
+from sqlalchemy import String, Integer, Float, Boolean, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from app.db.base import Base
@@ -35,6 +35,12 @@ class User(Base):
     tasks: Mapped[list["app.models.task.Task"]] = relationship(
         "Task", back_populates="user", cascade="all, delete-orphan"
     )
+    task_logs: Mapped[list["app.models.task.TaskLog"]] = relationship(
+        "TaskLog", back_populates="user", cascade="all, delete-orphan"
+    )
+    reflexion_logs: Mapped[list["app.models.task.ReflexionLog"]] = relationship(
+        "ReflexionLog", back_populates="user", cascade="all, delete-orphan"
+    )
     fixed_slots: Mapped[list["app.models.schedule.FixedSlot"]] = relationship(
         "FixedSlot", back_populates="user", cascade="all, delete-orphan"
     )
@@ -54,7 +60,9 @@ class UserProfile(Base):
     university: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     timezone: Mapped[Optional[str]] = mapped_column(String, nullable=True, default="UTC")
     current_archetype: Mapped[str] = mapped_column(String, default="Unclassified")
-    onboarding_data: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    onboarding_data: Mapped[dict[str, Any]] = mapped_column(JSON().with_variant(JSONB, "postgresql"), default=dict)
+    last_reflexion_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    persona_confidence: Mapped[float] = mapped_column(Float, default=0.0)
 
     user: Mapped["User"] = relationship("User", back_populates="profile")
 
